@@ -37,6 +37,55 @@ Full profiling methodology, microbenchmarks, and rejected experiments are docume
   (`single`, `multi`, `bech32`, `prefix`, `--random`), wall-clock A/B and Nsight Compute cycle
   benchmarks, and `sm_120` microbenchmarks (`bench/`).
 
+## Comparison with Other Bitcoin Puzzle Tools
+
+Bitcoin puzzle solvers fall into two distinct categories depending on whether the target address's
+**public key** is exposed on-chain:
+
+* **Exposed public key (e.g. puzzles #135, #140, …):** Use an $O(\sqrt{N})$ ECDLP solver such as
+  **Pollard's Kangaroo** (`JeanLucPons/Kangaroo`, `RCKangaroo`) or **BSGS** (`KeyHunt`). Brute-force
+  scanners like Orion cannot compete with $O(\sqrt{N})$ methods when a public key is known.
+* **Unspent address — only `hash160` is known (e.g. puzzles #71, #72, …):** No $O(\sqrt{N})$
+  shortcut applies, so every candidate key must run the full `secp256k1 → SHA-256 → RIPEMD-160`
+  pipeline. This is the workload Orion is built for.
+
+### How Orion compares to other brute-force & puzzle tools
+
+| Feature / Aspect | **Orion v2.0** | VanitySearch / BitCrack-style forks | BitCrack (`cuBitCrack` / `clBitCrack`) | KeyHunt-Cuda / Rotor-Cuda | KeyHunt (`albertobsd`) | Kangaroo / RCKangaroo |
+|---|---|---|---|---|---|---|
+| **Algorithm** | Brute-force range scan ($O(N)$) | Brute-force (vanity / range) | Brute-force range scan | Brute-force / xpoint / multi-mode | CPU BSGS, RMD160, xpoint, address | Pollard's Kangaroo ($O(\sqrt{N})$) |
+| **Target hardware** | NVIDIA CUDA (tuned for **Blackwell `sm_120`**) | NVIDIA CUDA + CPU | NVIDIA CUDA & AMD OpenCL | NVIDIA CUDA | CPU (multi-threaded) | NVIDIA CUDA (+ CPU) |
+| **EC field arithmetic on GPU** | Native 32-bit Comba `Wide32` (`IMAD.WIDE.U32`), parallel `mul.wide` reduction, branchless `ModAdd`/`ModSub` | 64-bit limbs (`_ModMult`/`_ModSqr`), branch-divergent `ModSub` | Legacy 32-bit/64-bit CUDA/OpenCL kernels | Mostly 64-bit VanitySearch-derived kernels | CPU GMP / secp256k1 | Specialized Kangaroo EC stepping |
+| **Hash & check pipeline** | Compile-time `comp_keys<MODE>`, **RIPEMD-160 7-half-round early-exit** (`h[2]`), `IMAD` ALU→FMA pipe offload, barrier-free hot loop | Full RIPEMD-160, runtime branches, `__syncthreads()` in loop | Full SHA-256 + RIPEMD-160 | Bloom filter / sorted lookup, full RIPEMD-160 | CPU SSE/AVX + Bloom filter | No hashing (public-key x-coord only) |
+| **Address types** | Compressed **P2PKH (`1…`)** & **P2WPKH (`bc1q…`)** | P2PKH, P2SH, Bech32 (comp + uncomp) | P2PKH (comp + uncomp) | P2PKH, P2SH, Bech32 (comp + uncomp), XPoint | P2PKH, P2SH, Bech32, XPoint | Public key only |
+| **Search modes** | Sequential (`-start`/`-range`/`-end`), `-random` (by-value `JumpPoint`), prefix, multi-address | Vanity random, range in forks | Sequential / stride / random | Sequential, random, large target lists | BSGS, sequential, random | Public-key range ECDLP |
+| **Resume / checkpoint** | Atomic `orion_backup_gpu<N>.dat` validated against range, thread count & `ORION_GRP` | Basic or legacy 12-byte offset file (or none) | Text checkpoint file | Varies by fork | Varies by mode | Distinguished-points workfiles |
+| **Multi-GPU** | One process per GPU (`-gpuId N`) | Multi-GPU in one process | Multi-GPU (one device per instance / flag) | Multi-GPU in one process | N/A (CPU) | Multi-GPU |
+| **Verification & profiling** | Built-in **pure-Python planted-key self-test** (5 modes), interleaved A/B bench, Nsight Compute cycle scripts | Basic CPU self-check | Basic check | Basic check | Built-in tests | Built-in tests |
+
+### Key differences & trade-offs
+
+* **Blackwell (`sm_120`) microarchitectural focus:** Most existing CUDA scanners still rely on
+  64-bit VanitySearch/BitCrack arithmetic and full RIPEMD-160 pipelines designed for Pascal/Turing/Ampere.
+  Orion was profiled directly on `sm_120` with Nsight Compute to eliminate `IADD.64` bottlenecks,
+  offload additions from the saturated ALU-heavy pipe to the FMA pipe, cut 7 RIPEMD-160 half-rounds
+  on the hot path, and remove block barriers — yielding **−22.9% SM cycles/key** and **+23.7%
+  wall-clock speed** over the 64-bit baseline while keeping 122 registers and 0 spills.
+* **Lean kernel vs. Swiss-army features:** Tools like **KeyHunt-Cuda**, **Rotor-Cuda**, and
+  **BitCrack** support uncompressed keys, P2SH (`3…`), OpenCL/AMD GPUs, multi-million-address Bloom
+  filters, or built-in multi-GPU/pool orchestration. Orion intentionally drops unused key modes so
+  the hot loop stays narrow, branchless, and register-clean for compressed `1…` and `bc1q…` targets.
+* **Independent correctness verification:** Rather than trusting the C++ binary to verify itself,
+  `bench/bench.py selftest` hides a random key in a range and re-derives the reported key's address
+  in pure Python, covering single-target, multi-target (`lookup32`), Bech32, prefix, and `-random`
+  paths.
+* **When to choose another tool:**
+  * Target has a **known public key** → use **Kangaroo / RCKangaroo** or **KeyHunt (BSGS)**.
+  * You need **AMD/OpenCL**, **CPU-only**, **uncompressed keys**, **P2SH (`3…`)**, **Taproot (`bc1p…`)**,
+    or **millions of targets via Bloom filter** → use **BitCrack**, **KeyHunt**, or **KeyHunt-Cuda**.
+  * You want **maximum single-GPU NVIDIA Blackwell throughput** on compressed `1…` or `bc1q…` puzzle
+    ranges with atomic checkpoints and reproducible benchmarks → use **Orion**.
+
 ## Usage
 
 ```

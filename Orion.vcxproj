@@ -20,11 +20,8 @@
     <ClInclude Include="GPU\GPUMath.h" />
     <ClInclude Include="hash\ripemd160.h" />
     <ClInclude Include="hash\sha256.h" />
-    <ClInclude Include="hash\sha512.h" />
     <ClInclude Include="Int.h" />
-    <ClInclude Include="IntGroup.h" />
     <ClInclude Include="Point.h" />
-    <ClInclude Include="Random.h" />
     <ClInclude Include="SECP256k1.h" />
     <ClInclude Include="Timer.h" />
     <ClInclude Include="Orion.h" />
@@ -32,26 +29,18 @@
   <ItemGroup>
     <ClCompile Include="Base58.cpp" />
     <ClCompile Include="Bech32.cpp" />
-    <ClCompile Include="GPU\GPUGenerate.cpp" />
     <ClCompile Include="hash\ripemd160.cpp" />
-    <ClCompile Include="hash\ripemd160_sse.cpp" />
     <ClCompile Include="hash\sha256.cpp" />
-    <ClCompile Include="hash\sha256_sse.cpp" />
-    <ClCompile Include="hash\sha512.cpp" />
     <ClCompile Include="Int.cpp" />
-    <ClCompile Include="IntGroup.cpp" />
     <ClCompile Include="IntMod.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Point.cpp" />
-    <ClCompile Include="Random.cpp" />
     <ClCompile Include="SECP256K1.cpp" />
     <ClCompile Include="Timer.cpp" />
     <ClCompile Include="Orion.cpp" />
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="GPU\GPUEngine.cu">
-      <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;compute_89,sm_89;compute_90,sm_90;compute_120,sm_120;compute_120,compute_120</CodeGeneration>
-      <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Release|x64'">compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;compute_89,sm_89;compute_90,sm_90;compute_120,sm_120;compute_120,compute_120</CodeGeneration>
       <PtxAsOptionV Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</PtxAsOptionV>
     </CudaCompile>
   </ItemGroup>
@@ -120,8 +109,7 @@
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32;WIN64;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <EnableEnhancedInstructionSet>
-      </EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet />
     </ClCompile>
     <Link>
       <GenerateDebugInformation>false</GenerateDebugInformation>

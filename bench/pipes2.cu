@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Orion contributors. See LICENSE.txt.
 // Which integer instructions share the ALU pipe with SHF on sm_120?
 // Each "A | B" test runs two independent chain families interleaved; if A and B use
 // different pipes the combined rate is ~ rate(A) + rate(B), if they share one it stays ~ rate(A).

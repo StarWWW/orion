@@ -15,10 +15,10 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <string.h>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include "sha256.h"
-
-#define BSWAP
 
 /// Internal SHA-256 implementation.
 namespace _sha256
@@ -26,44 +26,52 @@ namespace _sha256
 
   static const unsigned char pad[64] = { 0x80 };
 
-#ifndef WIN64
-#define _byteswap_ulong __builtin_bswap32
-#define _byteswap_uint64 __builtin_bswap64
-inline uint32_t _rotr(uint32_t x, uint8_t r) {
-  asm("rorl %1,%0" : "+r" (x) : "c" (r));
-  return x;
-}
-#endif
+  static inline uint32_t rotr32(uint32_t x, unsigned int n) {
+    return (x >> n) | (x << (32u - n));
+  }
 
-#define ROR(x,n) _rotr(x, n)
+  static inline uint32_t readBE32(const unsigned char* p) {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] << 8)  |  (uint32_t)p[3];
+  }
+
+  static inline void writeBE32(unsigned char* p, uint32_t x) {
+    p[0] = (unsigned char)(x >> 24);
+    p[1] = (unsigned char)(x >> 16);
+    p[2] = (unsigned char)(x >> 8);
+    p[3] = (unsigned char)(x);
+  }
+
+  static inline void writeBE64(unsigned char* p, uint64_t x) {
+    p[0] = (unsigned char)(x >> 56);
+    p[1] = (unsigned char)(x >> 48);
+    p[2] = (unsigned char)(x >> 40);
+    p[3] = (unsigned char)(x >> 32);
+    p[4] = (unsigned char)(x >> 24);
+    p[5] = (unsigned char)(x >> 16);
+    p[6] = (unsigned char)(x >> 8);
+    p[7] = (unsigned char)(x);
+  }
+
+#define ROR(x,n) rotr32(x, n)
 #define S0(x) (ROR(x,2) ^ ROR(x,13) ^ ROR(x,22))
 #define S1(x) (ROR(x,6) ^ ROR(x,11) ^ ROR(x,25))
-#define s0(x) (ROR(x,7) ^ ROR(x,18) ^ (x >> 3))
-#define s1(x) (ROR(x,17) ^ ROR(x,19) ^ (x >> 10))
+#define s0(x) (ROR(x,7) ^ ROR(x,18) ^ ((x) >> 3))
+#define s1(x) (ROR(x,17) ^ ROR(x,19) ^ ((x) >> 10))
 
-#define Maj(x,y,z) ((x&y)^(x&z)^(y&z))
-//#define Ch(x,y,z)  ((x&y)^(~x&z))
-
-// The following functions are equivalent to the above
-//#define Maj(x,y,z) ((x & y) | (z & (x | y)))
-#define Ch(x,y,z) (z ^ (x & (y ^ z)))
+#define Maj(x,y,z) (((x)&(y))^((x)&(z))^((y)&(z)))
+#define Ch(x,y,z) ((z) ^ ((x) & ((y) ^ (z))))
 
 // SHA-256 round
 #define Round(a, b, c, d, e, f, g, h, k, w) \
-    t1 = h + S1(e) + Ch(e,f,g) + k + (w); \
+    t1 = (h) + S1(e) + Ch(e,f,g) + (k) + (w); \
     t2 = S0(a) + Maj(a,b,c); \
-    d += t1; \
-    h = t1 + t2;
+    (d) += t1; \
+    (h) = t1 + t2;
 
-#ifdef BSWAP
-#define WRITEBE32(ptr,x) *((uint32_t *)(ptr)) = _byteswap_ulong(x)
-#define WRITEBE64(ptr,x) *((uint64_t *)(ptr)) = _byteswap_uint64(x)
-#define READBE32(ptr) (uint32_t)_byteswap_ulong(*(uint32_t *)(ptr))
-#else
-#define WRITEBE32(ptr,x) *(ptr) = x
-#define WRITEBE64(ptr,x) *(ptr) = x
-#define READBE32(ptr) *(uint32_t *)(ptr)
-#endif
+#define WRITEBE32(ptr,x) _sha256::writeBE32((unsigned char *)(ptr), (x))
+#define WRITEBE64(ptr,x) _sha256::writeBE64((unsigned char *)(ptr), (x))
+#define READBE32(ptr)    _sha256::readBE32((const unsigned char *)(ptr))
 
   // Initialise state
   void Initialize(uint32_t *s) {
@@ -480,13 +488,21 @@ void sha256_65(unsigned char *input, unsigned char *digest) {
 
 void sha256_checksum(uint8_t *input, int length, uint8_t *checksum) {
 
+  if (length < 0 || length > 55) {
+    uint8_t h[32];
+    sha256(input, length, h);
+    sha256(h, 32, h);
+    memcpy(checksum, h, 4);
+    return;
+  }
+
   uint32_t s[8];
   uint8_t b[64];
-  memcpy(b,input,length);
-  memcpy(b + length, _sha256::pad, 56-length);
-  WRITEBE64(b + 56, length << 3);
+  memcpy(b, input, (size_t)length);
+  memcpy(b + length, _sha256::pad, (size_t)(56 - length));
+  _sha256::writeBE64(b + 56, (uint64_t)length << 3);
   _sha256::Transform2(s, b);
-  WRITEBE32(checksum,s[0]);
+  _sha256::writeBE32(checksum, s[0]);
 
 }
 

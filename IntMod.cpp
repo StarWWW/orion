@@ -107,25 +107,6 @@ void Int::ModNeg() {
 
 // ------------------------------------------------
 
-// INV256[x] = x^-1 (mod 256)
-int64_t INV256[] = {
-    -0LL,-1LL,-0LL,-235LL,-0LL,-141LL,-0LL,-183LL,-0LL,-57LL,-0LL,-227LL,-0LL,-133LL,-0LL,-239LL,
-    -0LL,-241LL,-0LL,-91LL,-0LL,-253LL,-0LL,-167LL,-0LL,-41LL,-0LL,-83LL,-0LL,-245LL,-0LL,-223LL,
-    -0LL,-225LL,-0LL,-203LL,-0LL,-109LL,-0LL,-151LL,-0LL,-25LL,-0LL,-195LL,-0LL,-101LL,-0LL,-207LL,
-    -0LL,-209LL,-0LL,-59LL,-0LL,-221LL,-0LL,-135LL,-0LL,-9LL,-0LL,-51LL,-0LL,-213LL,-0LL,-191LL,
-    -0LL,-193LL,-0LL,-171LL,-0LL,-77LL,-0LL,-119LL,-0LL,-249LL,-0LL,-163LL,-0LL,-69LL,-0LL,-175LL,
-    -0LL,-177LL,-0LL,-27LL,-0LL,-189LL,-0LL,-103LL,-0LL,-233LL,-0LL,-19LL,-0LL,-181LL,-0LL,-159LL,
-    -0LL,-161LL,-0LL,-139LL,-0LL,-45LL,-0LL,-87LL,-0LL,-217LL,-0LL,-131LL,-0LL,-37LL,-0LL,-143LL,
-    -0LL,-145LL,-0LL,-251LL,-0LL,-157LL,-0LL,-71LL,-0LL,-201LL,-0LL,-243LL,-0LL,-149LL,-0LL,-127LL,
-    -0LL,-129LL,-0LL,-107LL,-0LL,-13LL,-0LL,-55LL,-0LL,-185LL,-0LL,-99LL,-0LL,-5LL,-0LL,-111LL,
-    -0LL,-113LL,-0LL,-219LL,-0LL,-125LL,-0LL,-39LL,-0LL,-169LL,-0LL,-211LL,-0LL,-117LL,-0LL,-95LL,
-    -0LL,-97LL,-0LL,-75LL,-0LL,-237LL,-0LL,-23LL,-0LL,-153LL,-0LL,-67LL,-0LL,-229LL,-0LL,-79LL,
-    -0LL,-81LL,-0LL,-187LL,-0LL,-93LL,-0LL,-7LL,-0LL,-137LL,-0LL,-179LL,-0LL,-85LL,-0LL,-63LL,
-    -0LL,-65LL,-0LL,-43LL,-0LL,-205LL,-0LL,-247LL,-0LL,-121LL,-0LL,-35LL,-0LL,-197LL,-0LL,-47LL,
-    -0LL,-49LL,-0LL,-155LL,-0LL,-61LL,-0LL,-231LL,-0LL,-105LL,-0LL,-147LL,-0LL,-53LL,-0LL,-31LL,
-    -0LL,-33LL,-0LL,-11LL,-0LL,-173LL,-0LL,-215LL,-0LL,-89LL,-0LL,-3LL,-0LL,-165LL,-0LL,-15LL,
-    -0LL,-17LL,-0LL,-123LL,-0LL,-29LL,-0LL,-199LL,-0LL,-73LL,-0LL,-115LL,-0LL,-21LL,-0LL,-255LL, };
-
 void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,int64_t* vu,int64_t* vv) {
 
   // u' = (uu*u + uv*v) >> bitCount
@@ -138,57 +119,6 @@ void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,
   uint64_t u0 = u->bits64[0];
   uint64_t v0 = v->bits64[0];
 
-#if 0
-
-  *uu = 1; *uv = 0;
-  *vu = 0; *vv = 1;
-
-  #define SWAP_ADD(x,y) x+=y;y-=x;
-  #define SWAP_SUB(x,y) x-=y;y+=x;
-
-  // Former divstep62 (using __builtin_ctzll)
-  // Avg: 632 Kinv/s, Avg number of divstep62: 9.83
-
-  bitCount = 62;
-  int64_t nb0;
-  __m128i _u;
-  __m128i _v;
-  _u.m128i_u64[0] = 1;
-  _u.m128i_u64[1] = 0;
-  _v.m128i_u64[0] = 0;
-  _v.m128i_u64[1] = 1;
-
-  while(true) {
-
-    int zeros = TZC(v0 | (UINT64_MAX << bitCount));
-    v0 >>= zeros;
-    _u = _mm_slli_epi64(_u,(int)zeros);
-    bitCount -= zeros;
-
-    if(bitCount <= 0)
-      break;
-
-    nb0 = (v0 + u0) & 0x3;
-    if(nb0 == 0) {
-      _v = _mm_add_epi64(_v,_u);
-      _u = _mm_sub_epi64(_u,_v);
-      SWAP_ADD(v0,u0);
-    } else {
-      _v = _mm_sub_epi64(_v,_u);
-      _u = _mm_add_epi64(_u,_v);
-      SWAP_SUB(v0,u0);
-    }
-
-  }
-  *uu = _u.m128i_u64[0];
-  *uv = _u.m128i_u64[1];
-  *vu = _v.m128i_u64[0];
-  *vv = _v.m128i_u64[1];
-
-#endif
-
-#if 1
-
   #define SWAP(tmp,x,y) tmp = x; x = y; y = tmp;
 
   // divstep62 var time implementation (Thomas Pornin's method)
@@ -199,7 +129,6 @@ void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,
   uint64_t uh;
   uint64_t vh;
   uint64_t w,x;
-  unsigned char c = 0;
 
   // Extract 64 MSB of u and v
   // u and v must be positive
@@ -272,91 +201,6 @@ void Int::DivStep62(Int* u,Int* v,int64_t* eta,int* pos,int64_t* uu,int64_t* uv,
   *uv = ((int64_t *)&_u)[1];
   *vu = ((int64_t *)&_v)[0];
   *vv = ((int64_t *)&_v)[1];
-#endif
-
-#endif
-
-#if 0
-
-  #define SWAP_NEG(tmp,x,y) tmp = x; x = y; y = -tmp;
-
-  int64_t m,w,x,y,z;
-  bitCount = 62;
-  int64_t limit;
-
-  *uu = 1; *uv = 0;
-  *vu = 0; *vv = 1;
-
-  // divstep62 var time implementation by Peter Dettman (based on Bernstein/Yang paper)
-  // (see https://github.com/bitcoin-core/secp256k1/pull/767)
-  // Avg: 700 Kinv/s, Avg number of divstep62: 9.00
-
-  while(true) {
-
-    // Use a sentinel bit to count zeros only up to bitCount
-    int zeros = TZC(v0 | (1ULL << bitCount));
-
-    v0 >>= zeros;
-    *uu <<= zeros;
-    *uv <<= zeros;
-    *eta -= zeros;
-    bitCount -= zeros;
-
-    if(bitCount <= 0) {
-      break;
-    }
-
-    if(*eta < 0) {
-      *eta = -*eta;
-      SWAP_NEG(x,u0,v0);
-      SWAP_NEG(y,*uu,*vu);
-      SWAP_NEG(z,*uv,*vv);
-    }
-
-    // Handle up to 6 divstep at once
-    limit = (*eta + 1) > bitCount ? bitCount : (*eta + 1);
-    m = (UINT64_MAX >> (64 - limit)) & 63U;
-    //w = (u0 * v0 * (u0 * u0 - 2)) & m; // w = v0 * -u0^-1 mod 2^6  (1 Newton step => 6bit)
-    w = (v0 * INV256[u0 & 63U]) & m;
-
-
-    v0 += u0 * w;
-    *vu += *uu * w;
-    *vv += *uv * w;
-
-  }
-
-#endif
-
-#if 0
-
-  // divstep62 constant time implementation by Peter Dettman (based on Bernstein/Yang paper)
-  // (see https://github.com/bitcoin-core/secp256k1/pull/767)
-  // Avg: 405 Kinv/s, Avg number of divstep62: 9.00
-  uint64_t c1,c2,x,y,z;
-
-  for(bitCount = 0; bitCount < 62; bitCount++) {
-
-    c1 = -(v0 & ((uint64_t)(*eta) >> 63));
-
-    x = (u0 ^ v0) & c1;
-    u0 ^= x; v0 ^= x; v0 ^= c1; v0 -= c1;
-
-    y = (*uu ^ *vu) & c1;
-    *uu ^= y; *vu ^= y; *vu ^= c1; *vu -= c1;
-
-    z = (*uv ^ *vv) & c1;
-    *uv ^= z; *vv ^= z; *vv ^= c1; *vv -= c1;
-
-    *eta = (*eta ^ c1) - c1 - 1;
-
-    c2 = -(v0 & 1);
-
-    v0 += (u0 & c2); v0 >>= 1;
-    *vu += (*uu & c2); *uu <<= 1;
-    *vv += (*uv & c2); *uv <<= 1;
-  }
-
 #endif
 
 }

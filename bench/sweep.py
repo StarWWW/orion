@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Orion contributors. See LICENSE.txt.
 """Builds a set of compile-time variants of the working tree and benchmarks them against a reference.
 
   python bench/sweep.py ref=build/ref/orion.exe "inl=-DHASH_INLINE=__forceinline__" "tpb128=-DORION_TPB=128"

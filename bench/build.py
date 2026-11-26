@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Orion contributors. See LICENSE.txt.
 """Builds orion.exe on Windows with nvcc + MSVC for one GPU arch.
 
   python bench/build.py opt                      # current working tree  -> build/opt/orion.exe
@@ -28,6 +30,21 @@ def find_vcvars():
     sys.exit('vcvars64.bat not found: install Visual Studio 2022 (Build Tools) with "Desktop development with C++"')
 
 
+def find_cuda():
+    """Locate the CUDA Toolkit via CUDA_PATH or the highest numeric version under Program Files."""
+    env = os.environ.get('CUDA_PATH')
+    if env and os.path.exists(os.path.join(env, 'bin', 'nvcc.exe')):
+        return env
+    def ver_key(p):
+        m = re.search(r'v(\d+(?:\.\d+)*)', os.path.basename(p))
+        return tuple(int(x) for x in m.group(1).split('.')) if m else ()
+    dirs = [d for d in glob.glob(r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v*')
+            if os.path.exists(os.path.join(d, 'bin', 'nvcc.exe'))]
+    if dirs:
+        return sorted(dirs, key=ver_key)[-1]
+    sys.exit('CUDA Toolkit not found: install CUDA (>= 12.8 for Blackwell) or set CUDA_PATH.')
+
+
 def sources(src):
     """The source list of the Makefile in src, so that older refs build with their own file set."""
     mk = open(os.path.join(src, 'Makefile'), encoding='utf-8', errors='replace').read()
@@ -55,11 +72,13 @@ def main():
         with zipfile.ZipFile(zpath) as z:
             z.extractall(src)
 
-    cuda = os.environ.get('CUDA_PATH') or sorted(glob.glob(r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v*'))[-1]
+    cuda = find_cuda()
     nvcc = os.path.join(cuda, 'bin', 'nvcc.exe')
-    flags = (f'-O3 -std=c++17 -m64 -gencode arch=compute_{a.arch},code=sm_{a.arch} --threads 0 '
+    flags = (f'-O3 -std=c++17 -m64 '
+             f'-gencode arch=compute_{a.arch},code=sm_{a.arch} '
+             f'-gencode arch=compute_{a.arch},code=compute_{a.arch} --threads 0 '
              f'-DWIN32 -DWIN64 -DNDEBUG -D_CRT_SECURE_NO_WARNINGS -D_CONSOLE '
-             f'-Xcompiler "/O2 /EHsc /W0" -I"{src}" -lcudart_static -ladvapi32 {a.nvflags}')
+             f'-Xcompiler "/O2 /EHsc /W3" -I"{src}" -lcudart_static {a.nvflags}')
     if a.ptxas_v:
         flags += ' -Xptxas -v'
     files = ' '.join(f'"{os.path.join(src, f)}"' for f in sources(src))
@@ -69,7 +88,7 @@ def main():
                 f'"{nvcc}" {flags} -o orion.exe {files}\n')
     r = subprocess.run(['cmd', '/c', bat], capture_output=True, text=True, encoding='utf-8', errors='replace')
     log = r.stdout + r.stderr
-    keep = [l for l in log.splitlines() if any(s in l for s in ('error', 'ptxas info', 'bytes stack', 'Used'))]
+    keep = [l for l in log.splitlines() if any(s in l for s in ('error', 'warning', 'ptxas info', 'bytes stack', 'Used'))]
     print('\n'.join(keep) if keep else log[-3000:])
     exe = os.path.join(out, 'orion.exe')
     if r.returncode or not os.path.exists(exe):

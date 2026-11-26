@@ -96,7 +96,7 @@ int bech32_decode_nocheck(uint8_t *data, size_t *data_len, const char *input) {
     if(input[i]&0x80)
       return false;
 
-    int8_t c = charset_rev[tolower(input[i])];
+    int8_t c = charset_rev[tolower((unsigned char)input[i])];
     if(c<0)
       return false;
 

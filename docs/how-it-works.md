@@ -66,8 +66,8 @@ those bits with a target. So before anything is reported, the CPU:
 
 Only an exact match is printed and saved. This is also what the self-test relies on: it re-derives the
 reported key's address in **pure Python**, independently of the tool, so a miscompiled build cannot
-fool it. (If a build's own CPU SHA-256 is miscompiled, it still prints the candidate key as `CandKey:`
-so an external check can use it, and warns at start-up.)
+fool it. (If a CPU re-derivation ever disagrees with a GPU hit, the original candidate key is still
+printed as `CandKey:` so an external check can inspect it.)
 
 ## Sequential vs random
 

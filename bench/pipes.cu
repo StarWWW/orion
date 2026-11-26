@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Orion contributors. See LICENSE.txt.
 // Microbenchmark: per-SM throughput of the integer instructions the kernel is made of.
 // Build: nvcc -O3 -arch=sm_120 -o pipes.exe pipes.cu      Run: pipes.exe
 // Each test runs 8 independent dependency chains per thread so latency is hidden;

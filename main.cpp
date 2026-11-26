@@ -1,20 +1,11 @@
 /*
- * This file is part of the VanitySearch distribution (https://github.com/JeanLucPons/VanitySearch).
+ * This file is part of Orion (derived from VanitySearch, https://github.com/JeanLucPons/VanitySearch).
  * Copyright (c) 2019 Jean Luc PONS.
- * Modified in 2026 for NVIDIA Blackwell (sm_120) throughput and robustness, see the git history.
+ * Modified in 2026 for NVIDIA Blackwell (sm_120) throughput and robustness, see OPTIMIZATION.md and the git history.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, version 3.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Original VanitySearch portions are licensed under GPLv3; Orion modifications and the combined
+ * work are licensed under GNU AGPLv3 (per GPLv3 section 13). See LICENSE.txt.
+ */
 
 
 #include <sstream>
@@ -45,7 +36,6 @@
 #endif
 
 std::atomic<bool> Pause(false);
-std::atomic<bool> Paused(false);
 std::atomic<bool> stopRequested(false);
 std::atomic<bool> stopMonitorKey(false);
 uint64_t idxcount = 0;
@@ -223,18 +213,32 @@ void parseFile(string fileName, vector<string>& lines) {
 		exit(1);
 	}
 	inFile.seekg(0, ios::end);
-	double sz = (double)inFile.tellg();
+	std::streamoff pos = inFile.tellg();
+	double sz = (pos > 0) ? (double)pos : 0.0;
 	inFile.seekg(0, ios::beg);
 	bool loadingProgress = sz > 100000;
-	lines.reserve(lines.size() + (size_t)(sz / 34.0)); // a P2PKH address and its line ending
+	if (sz > 0.0)
+		lines.reserve(lines.size() + (size_t)(sz / 34.0)); // a P2PKH address and its line ending
 
 	// Parse file
 	int nbLine = 0;
+	bool firstLine = true;
 	double bytesRead = 0;
 	string line;
 	while (getline(inFile, line)) {
 
 		bytesRead += (double)line.size() + 1;
+
+		// Strip UTF-8 BOM if present on the first line
+		if (firstLine) {
+			firstLine = false;
+			if (line.size() >= 3 &&
+			    (unsigned char)line[0] == 0xEF &&
+			    (unsigned char)line[1] == 0xBB &&
+			    (unsigned char)line[2] == 0xBF) {
+				line.erase(0, 3);
+			}
+		}
 
 		// Remove ending \r\n and surrounding blanks
 		while (!line.empty() && isspace((unsigned char)line.back()))
@@ -273,7 +277,6 @@ int main(int argc, char* argv[]) {
 	int a = 1;
 	bool stop = false;
 	bool backupMode = false;
-	int searchMode = SEARCH_COMPRESSED;
 	int gpuId = 0;
 	vector<string> address;
 	string outputFile = "";
@@ -412,7 +415,6 @@ int main(int argc, char* argv[]) {
 			bc->ksFinish.Set(&maxKey);
 		}
 	}
-	bc->ksNext.Set(&bc->ksStart);
 
 	Int taskSize;
 	taskSize.Set(&bc->ksFinish);
@@ -496,11 +498,10 @@ int main(int argc, char* argv[]) {
 
 	// One search object for the whole run: a resume after a pause keeps the addresses already
 	// found, so -stop still stops once every address has been found
-	OrionSearch* v = new OrionSearch(secp, address, searchMode, stop, outputFile, maxFound, bc);
+	OrionSearch* v = new OrionSearch(secp, address, stop, outputFile, maxFound, bc);
 
 	while (true) {
 
-		Paused = false;
 		status = v->Search(gpuId);
 
 		if (status != SEARCH_PAUSED)

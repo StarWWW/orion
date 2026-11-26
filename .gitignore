@@ -5,6 +5,10 @@ obj/
 *.exe
 /orion
 __pycache__/
+# IDE / local settings
+.vscode/
+.vs/
+x64/
 # profiler reports
 *.ncu-rep
 *.ncu-repz
@@ -16,3 +20,6 @@ __pycache__/
 orion_backup_*.dat
 orion_backup_*.dat.prev
 orion_backup_*.dat.tmp
+VSbackup_*.dat
+VSbackup_*.dat.prev
+VSbackup_*.dat.tmp

@@ -20,7 +20,6 @@
 #ifndef BIGINTH
 #define BIGINTH
 
-#include "Random.h"
 #include <string>
 #include <inttypes.h>
 
@@ -91,7 +90,6 @@ public:
   bool IsNegative();
   bool IsEven();
   bool IsOdd();
-  bool IsProbablePrime();
 
 
   double ToDouble();
@@ -156,8 +154,6 @@ public:
   void SetByte(int n,unsigned char byte);
   void SetDWord(int n, uint32_t b);
   void SetQWord(int n,uint64_t b);
-  void Rand(int nbit);
-  void Rand(Int *randMax);
   void Set32Bytes(unsigned char *bytes);
   void MaskByte(int n);
 
@@ -175,18 +171,7 @@ public:
   std::string GetBlockStr();
   std::string GetC64Str(int nbDigit);
 
-  // Check functions
-  static void Check();
-  static bool CheckInv(Int *a);
 
-
-  /*
-  // Align to 16 bytes boundary
-  union {
-    __declspec(align(16)) uint32_t bits[NB32BLOCK];
-    __declspec(align(16)) uint64_t bits64[NB64BLOCK];
-  };
-  */
   union {
     uint32_t bits[NB32BLOCK];
     uint64_t bits64[NB64BLOCK];

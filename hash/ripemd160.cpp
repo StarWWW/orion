@@ -31,14 +31,11 @@ void inline Initialize(uint32_t* s)
     s[4] = 0xC3D2E1F0ul;
 }
 
-#ifndef WIN64
-inline uint32_t _rotl(uint32_t x, uint8_t r) {
-  asm("roll %1,%0" : "+r" (x) : "c" (r));
-  return x;
+static inline uint32_t rotl32(uint32_t x, unsigned int n) {
+    return (x << n) | (x >> (32u - n));
 }
-#endif
 
-#define ROL(x,n) _rotl(x,n)
+#define ROL(x,n) rotl32((x), (n))
 
 #define f1(x, y, z) (x ^ y ^ z)
 #define f2(x, y, z) ((x & y) | (~x & z))
@@ -278,10 +275,11 @@ void CRIPEMD160::Finalize(unsigned char hash[20])
 {
     static const unsigned char pad[64] = {0x80};
     unsigned char sizedesc[8];
-    *(uint64_t *)sizedesc = bytes << 3;
+    uint64_t bitlen = bytes << 3;
+    memcpy(sizedesc, &bitlen, 8);
     Write(pad, 1 + ((119 - (bytes % 64)) % 64));
     Write(sizedesc, 8);
-    memcpy(hash,s,20);
+    memcpy(hash, s, 20);
 }
 
 static const uint64_t sizedesc_32 = 32 << 3;
@@ -289,11 +287,12 @@ static const unsigned char pad[64] = { 0x80 };
 
 void ripemd160_32(unsigned char *input, unsigned char *digest) {
 
-  uint32_t *s = (uint32_t *)digest;
+  uint32_t s[5];
   _ripemd160::Initialize(s);
-  memcpy(input+32,pad,24);
-  memcpy(input+56,&sizedesc_32,8);
+  memcpy(input + 32, pad, 24);
+  memcpy(input + 56, &sizedesc_32, 8);
   _ripemd160::Transform(s, input);
+  memcpy(digest, s, 20);
 
 }
 

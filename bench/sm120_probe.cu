@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Orion contributors. See LICENSE.txt.
 // Phase 0 microbenchmark for NVIDIA Blackwell (sm_120):
 // Measures actual pipe mapping and throughput of:
 //  1) IADD.64 / IADD.64.X vs 32-bit IADD / IADD.X
@@ -417,6 +419,15 @@ __device__ __forceinline__ void ModSqr32_Full(uint32_t r[8], const uint32_t a[8]
   Reduce512_32(r, t);
 }
 
+// Canonical reduction mod p = 2^256 - 2^32 - 977 so verify_math checks exact field equivalence
+__device__ __forceinline__ void CanonP64(uint64_t r[4]) {
+  constexpr uint64_t P0 = 0xFFFFFFFEFFFFFC2FULL;
+  constexpr uint64_t P1 = 0xFFFFFFFFFFFFFFFFULL;
+  if (r[3] == P1 && r[2] == P1 && r[1] == P1 && r[0] >= P0) {
+    r[0] -= P0; r[1] = 0; r[2] = 0; r[3] = 0;
+  }
+}
+
 // Correctness check kernel
 __global__ void verify_math(const uint64_t *in, uint64_t *out, int n) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -435,18 +446,25 @@ __global__ void verify_math(const uint64_t *in, uint64_t *out, int n) {
   _ModSqr(s_old, a64);
   ModSqr32_Full(s_new, a32);
   ModSqr_Wide32(s_w, a32);
+
+  uint64_t mn64[4], mw64[4], mk64[4], sn64[4], sw64[4];
+  for (int k = 0; k < 4; k++) {
+    mn64[k] = (uint64_t)m_new[2*k] | ((uint64_t)m_new[2*k+1] << 32);
+    mw64[k] = (uint64_t)m_w[2*k]   | ((uint64_t)m_w[2*k+1] << 32);
+    mk64[k] = (uint64_t)m_k[2*k]   | ((uint64_t)m_k[2*k+1] << 32);
+    sn64[k] = (uint64_t)s_new[2*k] | ((uint64_t)s_new[2*k+1] << 32);
+    sw64[k] = (uint64_t)s_w[2*k]   | ((uint64_t)s_w[2*k+1] << 32);
+  }
+  CanonP64(m_old); CanonP64(mn64); CanonP64(mw64); CanonP64(mk64);
+  CanonP64(s_old); CanonP64(sn64); CanonP64(sw64);
+
   int bad = 0;
   for (int k = 0; k < 4; k++) {
-    uint64_t mn = (uint64_t)m_new[2*k] | ((uint64_t)m_new[2*k+1] << 32);
-    uint64_t mw = (uint64_t)m_w[2*k] | ((uint64_t)m_w[2*k+1] << 32);
-    uint64_t mk = (uint64_t)m_k[2*k] | ((uint64_t)m_k[2*k+1] << 32);
-    uint64_t sn = (uint64_t)s_new[2*k] | ((uint64_t)s_new[2*k+1] << 32);
-    uint64_t sw = (uint64_t)s_w[2*k] | ((uint64_t)s_w[2*k+1] << 32);
-    if (m_old[k] != mn) bad |= 1;
-    if (m_old[k] != mw) bad |= 2;
-    if (m_old[k] != mk) bad |= 16;
-    if (s_old[k] != sn) bad |= 4;
-    if (s_old[k] != sw) bad |= 8;
+    if (m_old[k] != mn64[k]) bad |= 1;
+    if (m_old[k] != mw64[k]) bad |= 2;
+    if (m_old[k] != mk64[k]) bad |= 16;
+    if (s_old[k] != sn64[k]) bad |= 4;
+    if (s_old[k] != sw64[k]) bad |= 8;
   }
   out[i] = bad;
 }

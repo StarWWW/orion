@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Orion contributors. See LICENSE.txt.
 // Field multiplication microbenchmark: 64-bit-limb _ModMult vs a 32-bit-limb
 // row-scanning 256x256 product (PTX carry chains) feeding the same 512->256 reduction.
 // Build: nvcc -O3 -arch=sm_120 -I.. -o fieldmul.exe fieldmul.cu   Run: fieldmul.exe > out.txt
@@ -50,7 +52,7 @@ __device__ __forceinline__ void Mul256_32(uint64_t *r512, const uint64_t *a64, c
 __device__ __forceinline__ void Reduce512(uint64_t *r, uint64_t *r512) {
   uint64_t t[NBBLOCK];
   uint64_t ah, al;
-  ReduceMult(t, (r512 + 4));
+  UMult(t, (r512 + 4), 0x1000003D1ULL);
   UADDO1(r512[0], t[0]);
   UADDC1(r512[1], t[1]);
   UADDC1(r512[2], t[2]);

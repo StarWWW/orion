@@ -1,20 +1,11 @@
 /*
- * This file is part of the VanitySearch distribution (https://github.com/JeanLucPons/VanitySearch).
+ * This file is part of Orion (derived from VanitySearch, https://github.com/JeanLucPons/VanitySearch).
  * Copyright (c) 2019 Jean Luc PONS.
  * Modified in 2026 for NVIDIA Blackwell (sm_120) throughput, see OPTIMIZATION.md and the git history.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, version 3.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Original VanitySearch portions are licensed under GPLv3; Orion modifications and the combined
+ * work are licensed under GNU AGPLv3 (per GPLv3 section 13). See LICENSE.txt.
+ */
 
 #ifndef WIN64
 #include <unistd.h>
@@ -169,11 +160,15 @@ __global__ void ORION_BOUNDS comp_keys(const address_t* __restrict__ sAddress,
         ORION_SYNC();
 
         // Pre-loop: product chain of denominators (jumpX - sx) and (Gx[i] - sx)
+#if ORION_SUBGRP < ORION_GRP
         if (isLastSub) {
             Load256_32(gx, finalJump.x);
         } else {
             LoadConst256_32(gx, Gx[ORION_SUBGRP - 1]);
         }
+#else
+        Load256_32(gx, finalJump.x);
+#endif
         ModSub256_32(dx, gx, sx);
         Load256_32(subp[SUB_M - 1], dx);
 
@@ -312,6 +307,7 @@ __global__ void ORION_BOUNDS comp_keys(const address_t* __restrict__ sAddress,
 
         // Advance center point P <- P + jumpPoint
         ORION_SYNC();
+#if ORION_SUBGRP < ORION_GRP
         if (isLastSub) {
             Load256_32(gx, finalJump.x);
             Load256_32(gy, finalJump.y);
@@ -319,6 +315,10 @@ __global__ void ORION_BOUNDS comp_keys(const address_t* __restrict__ sAddress,
             LoadConst256_32(gx, Gx[ORION_SUBGRP - 1]);
             LoadConst256_32(gy, Gy[ORION_SUBGRP - 1]);
         }
+#else
+        Load256_32(gx, finalJump.x);
+        Load256_32(gy, finalJump.y);
+#endif
         ModSub256_32(dy, gy, sy);
         ModMult_Wide32(dy, dy, inv32);
         ModSqr_Wide32(px, dy);
@@ -341,7 +341,7 @@ __global__ void ORION_BOUNDS comp_keys(const address_t* __restrict__ sAddress,
 
 
 // ---------------------------------------------------------------------------------------
-int NB_THREAD_PER_GROUP;
+static constexpr int NB_THREAD_PER_GROUP = ORION_TPB;
 
 using namespace std;
 
@@ -361,6 +361,7 @@ GPUEngine::GPUEngine(int gpuId, uint32_t maxFound) {
     initialised = false;
     lostWarning = false;
     nbThread = 0;
+    launchBlocks = 0;
     this->maxFound = maxFound;
     outputSize = 0;
 
@@ -390,17 +391,16 @@ GPUEngine::GPUEngine(int gpuId, uint32_t maxFound) {
         return;
     }
 
-    NB_THREAD_PER_GROUP = ORION_TPB;                                          //////////////////  GRID SIZE ////////////////
     int nbThreadGroup = deviceProp.multiProcessorCount * ORION_BPSM;
 
     if (!randomMode) {
         uint64_t powerOfTwo = 1;
-        while (powerOfTwo <= nbThreadGroup) {  //  GET THE CLOSEST POWER OF 2
+        while (powerOfTwo <= (uint64_t)nbThreadGroup) {  // GET THE CLOSEST POWER OF 2
             powerOfTwo <<= 1;
         }
 
         powerOfTwo >>= 1;
-        nbThreadGroup = powerOfTwo;
+        nbThreadGroup = (int)powerOfTwo;
     }
 
 
@@ -421,7 +421,8 @@ GPUEngine::GPUEngine(int gpuId, uint32_t maxFound) {
 
    
 
-    this->nbThread = nbThreadGroup * NB_THREAD_PER_GROUP;//////////////////////////////////////////////////////////////////
+    this->nbThread = nbThreadGroup * NB_THREAD_PER_GROUP;
+    this->launchBlocks = nbThreadGroup;
     this->maxFound = maxFound;
     this->outputSize = (maxFound * ITEM_SIZE + 4);
 
@@ -448,45 +449,23 @@ GPUEngine::GPUEngine(int gpuId, uint32_t maxFound) {
     }
 #endif
 
-    //size_t stackSize = 49152;
-    //err = cudaDeviceSetLimit(cudaLimitStackSize, stackSize);
-    //if (err != cudaSuccess) {
-    //  printf("GPUEngine: %s\n", cudaGetErrorString(err));
-    //  return;
-    //}
-
-    /*
-    size_t heapSize = ;
-    err = cudaDeviceSetLimit(cudaLimitMallocHeapSize, heapSize);
-    if (err != cudaSuccess) {
-      printf("Error: %s\n", cudaGetErrorString(err));
-      exit(0);
-    }
-
-    size_t size;
-    cudaDeviceGetLimit(&size, cudaLimitStackSize);
-    printf("Stack Size %lld\n", size);
-    cudaDeviceGetLimit(&size, cudaLimitMallocHeapSize);
-    printf("Heap Size %lld\n", size);
-    */
-
     // Allocate memory
     err = cudaMalloc((void**)&inputAddress, _64K * 2);
     if (err != cudaSuccess) {
         printf("GPUEngine: Allocate address memory: %s\n", cudaGetErrorString(err));
         return;
     }
-    err = cudaHostAlloc(&inputAddressPinned, _64K * 2, cudaHostAllocWriteCombined | cudaHostAllocMapped);
+    err = cudaHostAlloc(&inputAddressPinned, _64K * 2, cudaHostAllocWriteCombined);
     if (err != cudaSuccess) {
         printf("GPUEngine: Allocate address pinned memory: %s\n", cudaGetErrorString(err));
         return;
     }
-    err = cudaMalloc((void**)&inputKey, nbThread * 32 * 2);
+    err = cudaMalloc((void**)&inputKey, (size_t)nbThread * 32 * 2);
     if (err != cudaSuccess) {
         printf("GPUEngine: Allocate input memory: %s\n", cudaGetErrorString(err));
         return;
     }
-    err = cudaHostAlloc(&inputKeyPinned, nbThread * 32 * 2, cudaHostAllocWriteCombined | cudaHostAllocMapped);
+    err = cudaHostAlloc(&inputKeyPinned, (size_t)nbThread * 32 * 2, cudaHostAllocWriteCombined);
     if (err != cudaSuccess) {
         printf("GPUEngine: Allocate input pinned memory: %s\n", cudaGetErrorString(err));
         return;
@@ -496,7 +475,7 @@ GPUEngine::GPUEngine(int gpuId, uint32_t maxFound) {
         printf("GPUEngine: Allocate output memory: %s\n", cudaGetErrorString(err));
         return;
     }
-    err = cudaHostAlloc(&outputBufferPinned, outputSize, cudaHostAllocMapped);
+    err = cudaHostAlloc(&outputBufferPinned, outputSize, cudaHostAllocDefault);
     if (err != cudaSuccess) {
         printf("GPUEngine: Allocate output pinned memory: %s\n", cudaGetErrorString(err));
         return;
@@ -509,8 +488,6 @@ GPUEngine::GPUEngine(int gpuId, uint32_t maxFound) {
         return;
     }
 
-    searchMode = SEARCH_COMPRESSED;
-    searchType = P2PKH;
     targetMode = TARGET_PREFIX;
 
     // Default finalJump = ORION_SUBGRP * G (so N_SUB sub-batches advance by STEP_SIZE = ORION_GRP)
@@ -600,17 +577,17 @@ int GPUEngine::GetNbThread() {
     return nbThread;
 }
 
-void GPUEngine::SetSearchMode(int searchMode) {
-    this->searchMode = searchMode;
+int GPUEngine::GetLaunchThreads() {
+    return launchBlocks * NB_THREAD_PER_GROUP;
 }
 
-void GPUEngine::SetSearchType(int searchType) {
-    this->searchType = searchType;
+void GPUEngine::SetActiveThreads(uint64_t activeThreads) {
+    uint64_t maxBlocks = (uint64_t)(nbThread / NB_THREAD_PER_GROUP);
+    uint64_t blocks = (activeThreads + (uint64_t)NB_THREAD_PER_GROUP - 1ULL) / (uint64_t)NB_THREAD_PER_GROUP;
+    if (blocks < 1ULL) blocks = 1ULL;
+    if (blocks > maxBlocks) blocks = maxBlocks;
+    launchBlocks = (int)blocks;
 }
-
-
-
-
 
 bool GPUEngine::SetAddress(std::vector<address_t> addresses) {
 
@@ -644,7 +621,7 @@ bool GPUEngine::SetAddress(std::vector<LADDRESS> addresses, uint32_t totalAddres
         printf("GPUEngine: Allocate address lookup memory: %s\n", cudaGetErrorString(err));
         return false;
     }
-    err = cudaHostAlloc(&inputAddressLookUpPinned, (_64K + totalAddress) * 4, cudaHostAllocWriteCombined | cudaHostAllocMapped);
+    err = cudaHostAlloc(&inputAddressLookUpPinned, (size_t)(_64K + totalAddress) * 4, cudaHostAllocWriteCombined);
     if (err != cudaSuccess) {
         printf("GPUEngine: Allocate address lookup pinned memory: %s\n", cudaGetErrorString(err));
         return false;
@@ -654,10 +631,15 @@ bool GPUEngine::SetAddress(std::vector<LADDRESS> addresses, uint32_t totalAddres
     memset(inputAddressPinned, 0, _64K * 2);
     memset(inputAddressLookUpPinned, 0, _64K * 4);
     for (int i = 0; i < (int)addresses.size(); i++) {
-        int nbLAddress = (int)addresses[i].lAddresses.size();
+        size_t nbLAddress = addresses[i].lAddresses.size();
+        if (nbLAddress > 65535) {
+            printf("GPUEngine: lookup16 bucket %u overflow (%zu > 65535 addresses)\n",
+                   (unsigned)addresses[i].sAddress, nbLAddress);
+            return false;
+        }
         inputAddressPinned[addresses[i].sAddress] = (uint16_t)nbLAddress;
         inputAddressLookUpPinned[addresses[i].sAddress] = offset;
-        for (int j = 0; j < nbLAddress; j++) {
+        for (size_t j = 0; j < nbLAddress; j++) {
             inputAddressLookUpPinned[offset++] = addresses[i].lAddresses[j];
         }
     }
@@ -727,13 +709,13 @@ bool GPUEngine::callKernel() {
     cudaMemsetAsync(outputBuffer, 0, 4);
 
     if (targetMode == TARGET_SINGLE) {
-        comp_keys<TARGET_SINGLE> <<< nbThread / NB_THREAD_PER_GROUP, NB_THREAD_PER_GROUP >>>
+        comp_keys<TARGET_SINGLE> <<< launchBlocks, NB_THREAD_PER_GROUP >>>
             (inputAddress, inputAddressLookUp, inputKey, outputBuffer, finalJump);
     } else if (targetMode == TARGET_MULTI_FULL) {
-        comp_keys<TARGET_MULTI_FULL> <<< nbThread / NB_THREAD_PER_GROUP, NB_THREAD_PER_GROUP >>>
+        comp_keys<TARGET_MULTI_FULL> <<< launchBlocks, NB_THREAD_PER_GROUP >>>
             (inputAddress, inputAddressLookUp, inputKey, outputBuffer, finalJump);
     } else {
-        comp_keys<TARGET_PREFIX> <<< nbThread / NB_THREAD_PER_GROUP, NB_THREAD_PER_GROUP >>>
+        comp_keys<TARGET_PREFIX> <<< launchBlocks, NB_THREAD_PER_GROUP >>>
             (inputAddress, inputAddressLookUp, inputKey, outputBuffer, finalJump);
     }
 
@@ -803,36 +785,12 @@ bool GPUEngine::SetRandomJump(Point p) {
 
 
 
-bool GPUEngine::Launch(std::vector<ITEM>& addressFound, bool spinWait) {
+bool GPUEngine::Launch(std::vector<ITEM>& addressFound) {
 
     addressFound.clear();
-    
 
-    // Get the result
-
-
-    if(spinWait) {
-
-      // Waits for the kernel; only the hit counter is needed here, the items are copied below
-      cudaMemcpy(outputBufferPinned, outputBuffer, 4, cudaMemcpyDeviceToHost);
-
-    } else {
-
-      // Use cudaMemcpyAsync to avoid default spin wait of cudaMemcpy wich takes 100% CPU
-      cudaEvent_t evt;
-      cudaEventCreate(&evt);
-
-      //cudaMemcpy(outputBufferPinned, outputBuffer, 4, cudaMemcpyDeviceToHost);
-      cudaMemcpyAsync(outputBufferPinned, outputBuffer, 4, cudaMemcpyDeviceToHost, 0);
-
-      cudaEventRecord(evt, 0);
-      while (cudaEventQuery(evt) == cudaErrorNotReady) {
-        // Sleep 1 ms to free the CPU
-        Timer::SleepMillis(1);
-      }
-      cudaEventDestroy(evt);
-
-    }
+    // Waits for the kernel (uses BlockingSync); only the hit counter is needed here, payloads are copied below
+    cudaMemcpy(outputBufferPinned, outputBuffer, 4, cudaMemcpyDeviceToHost);
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -861,10 +819,7 @@ bool GPUEngine::Launch(std::vector<ITEM>& addressFound, bool spinWait) {
         uint32_t* itemPtr = outputBufferPinned + (i * ITEM_SIZE32 + 1);
         ITEM it;
         it.thId = itemPtr[0];
-        int16_t* ptr = (int16_t*)&(itemPtr[1]);
-        it.endo = ptr[0] & 0x7FFF;
-        it.mode = (ptr[0] & 0x8000) != 0;
-        it.incr = ptr[1];
+        it.incr = (int32_t)itemPtr[1];
         it.hash = (uint8_t*)(itemPtr + 2);
         addressFound.push_back(it);
     }

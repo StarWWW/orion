@@ -4,35 +4,29 @@
 # Default target is sm_120 (Blackwell). Other GPUs: make CCAP=89 (Ada), CCAP=86 (Ampere), ...
 # Custom CUDA location: make CUDA=/usr/local/cuda-12.8
 
-SRC = Base58.cpp IntGroup.cpp main.cpp Random.cpp \
-      Timer.cpp Int.cpp IntMod.cpp Point.cpp SECP256K1.cpp \
-      Orion.cpp GPU/GPUGenerate.cpp hash/ripemd160.cpp \
-      hash/sha256.cpp hash/sha512.cpp hash/ripemd160_sse.cpp \
-      hash/sha256_sse.cpp Bech32.cpp
+SRC = Base58.cpp main.cpp Timer.cpp Int.cpp IntMod.cpp Point.cpp \
+      SECP256K1.cpp Orion.cpp hash/ripemd160.cpp hash/sha256.cpp Bech32.cpp
 
 OBJDIR = obj
 
 OBJET = $(addprefix $(OBJDIR)/, \
-        Base58.o IntGroup.o main.o Random.o Timer.o Int.o \
-        IntMod.o Point.o SECP256K1.o Orion.o GPU/GPUGenerate.o \
-        hash/ripemd160.o hash/sha256.o hash/sha512.o \
-        hash/ripemd160_sse.o hash/sha256_sse.o \
+        Base58.o main.o Timer.o Int.o IntMod.o Point.o \
+        SECP256K1.o Orion.o hash/ripemd160.o hash/sha256.o \
         GPU/GPUEngine.o Bech32.o)
 
-# The rules below define their targets in this order, "make" alone must still build the program
 .DEFAULT_GOAL := all
 
 CXX        = g++
 CUDA       = /usr/local/cuda
-CXXCUDA    = /usr/bin/g++
+CXXCUDA    = $(CXX)
 NVCC       = $(CUDA)/bin/nvcc
 CCAP       = 120
 GENCODE    = -gencode=arch=compute_$(CCAP),code=sm_$(CCAP) -gencode=arch=compute_$(CCAP),code=compute_$(CCAP)
 
 ifdef debug
-CXXFLAGS   = -std=c++17 -mssse3 -Wno-write-strings -g -fno-strict-aliasing -I. -I$(CUDA)/include -include cstdint
+CXXFLAGS   = -std=c++17 -Wno-write-strings -g -fno-strict-aliasing -I. -I$(CUDA)/include -include cstdint
 else
-CXXFLAGS   = -std=c++17 -mssse3 -Wno-write-strings -O3 -fno-strict-aliasing -I. -I$(CUDA)/include -include cstdint
+CXXFLAGS   = -std=c++17 -Wno-write-strings -O3 -fno-strict-aliasing -I. -I$(CUDA)/include -include cstdint
 endif
 LFLAGS     = -lpthread -L$(CUDA)/lib64 -lcudart_static -ldl -lrt
 
@@ -42,7 +36,7 @@ GPU_HEADERS = $(HEADERS) $(wildcard GPU/*.h)
 
 #--------------------------------------------------------------------
 
-all: Orion
+all: orion
 
 ifdef debug
 $(OBJDIR)/GPU/GPUEngine.o: GPU/GPUEngine.cu $(GPU_HEADERS)
@@ -55,9 +49,9 @@ endif
 $(OBJDIR)/%.o : %.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) -o $@ -c $<
 
-Orion: $(OBJET)
+orion: $(OBJET)
 	@echo Making Orion...
-	$(CXX) $(OBJET) $(LFLAGS) -o orion
+	$(CXX) $(OBJET) $(LFLAGS) -o $@
 
 $(OBJET): | $(OBJDIR) $(OBJDIR)/GPU $(OBJDIR)/hash
 
@@ -65,16 +59,16 @@ $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
 $(OBJDIR)/GPU: $(OBJDIR)
-	cd $(OBJDIR) &&	mkdir -p GPU
+	mkdir -p $(OBJDIR)/GPU
 
 $(OBJDIR)/hash: $(OBJDIR)
-	cd $(OBJDIR) &&	mkdir -p hash
+	mkdir -p $(OBJDIR)/hash
 
 clean:
 	@echo Cleaning...
-	@rm -f obj/*.o
-	@rm -f obj/GPU/*.o
-	@rm -f obj/hash/*.o
+	@rm -f $(OBJDIR)/*.o
+	@rm -f $(OBJDIR)/GPU/*.o
+	@rm -f $(OBJDIR)/hash/*.o
 	@rm -f orion
 
-.PHONY: all clean Orion
+.PHONY: all clean

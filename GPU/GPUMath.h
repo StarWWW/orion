@@ -1,20 +1,11 @@
 ﻿/*
-* This file is part of the VanitySearch distribution (https://github.com/JeanLucPons/VanitySearch).
-* Copyright (c) 2019 Jean Luc PONS.
-* Modified in 2026 for NVIDIA Blackwell (sm_120) throughput, see OPTIMIZATION.md and the git history.
-*
-* This program is free software: you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation, version 3.
-*
-* This program is distributed in the hope that it will be useful, but
-* WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-* General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program. If not, see <http://www.gnu.org/licenses/>.
-*/
+ * This file is part of Orion (derived from VanitySearch, https://github.com/JeanLucPons/VanitySearch).
+ * Copyright (c) 2019 Jean Luc PONS.
+ * Modified in 2026 for NVIDIA Blackwell (sm_120) throughput, see OPTIMIZATION.md and the git history.
+ *
+ * Original VanitySearch portions are licensed under GPLv3; Orion modifications and the combined
+ * work are licensed under GNU AGPLv3 (per GPLv3 section 13). See LICENSE.txt.
+ */
 
 // ---------------------------------------------------------------------------------
 // 256(+64) bits integer CUDA libray for SECPK1
@@ -110,36 +101,6 @@ USUB(r[4],0ULL,r[4]); }
   MADDC(r[3], a[2], b, r[3]); \
   MADD(r[4], a[3], b, 0ULL);}
 
-
-#define UMultSpecial(r, a) {\
-  uint64_t temp; /* Dichiarazione di temp qui */\
-  r[0] = (a[0] << 32) + (a[0] << 9) + (a[0] << 8) + (a[0] << 7) + (a[0] << 6) + (a[0] << 4) + a[0]; \
-  r[1] = (a[1] << 32) + (a[1] << 9) + (a[1] << 8) + (a[1] << 7) + (a[1] << 6) + (a[1] << 4) + a[1]; \
-  MADDO(r[1], a[0], 0x1000003D1ULL, r[1]); \
-  r[2] = (a[2] << 32) + (a[2] << 9) + (a[2] << 8) + (a[2] << 7) + (a[2] << 6) + (a[2] << 4) + a[2]; \
-  MADDC(r[2], a[1], 0x1000003D1ULL, r[2]); \
-  r[3] = (a[3] << 32) + (a[3] << 9) + (a[3] << 8) + (a[3] << 7) + (a[3] << 6) + (a[3] << 4) + a[3]; \
-  temp = r[3]; \
-  MADDC(r[3], a[2], 0x1000003D1ULL, r[3]); \
-  r[4] = temp + a[3]; \
-  MADD(r[4], a[3], 0x1000003D1ULL, 0ULL); \
-}
-
-
-
-
-
-// Multiply by 0x1000003D1 for the 512->320 reduction step. UMultSpecial expands it into
-// shifts/adds (ALU pipe); ORION_REDMUL=1 uses real multiplies so the work goes to the FMA pipe.
-#ifndef ORION_REDMUL
-#define ORION_REDMUL 1
-#endif
-#if ORION_REDMUL
-#define ReduceMult(r, a) UMult(r, a, 0x1000003D1ULL)
-#else
-#define ReduceMult(r, a) UMultSpecial(r, a)
-#endif
-
 // ---------------------------------------------------------------------------------------
 
 #define Load(r, a) {\
@@ -148,38 +109,6 @@ USUB(r[4],0ULL,r[4]); }
   (r)[2] = (a)[2]; \
   (r)[3] = (a)[3]; \
   (r)[4] = (a)[4];}
-
-// ---------------------------------------------------------------------------------------
-
-#define _LoadI64(r, a) {\
-  (r)[0] = a; \
-  (r)[1] = a>>63; \
-  (r)[2] = (r)[1]; \
-  (r)[3] = (r)[1]; \
-  (r)[4] = (r)[1];}
-// ---------------------------------------------------------------------------------------
-
-#define Load256(r, a) {\
-  (r)[0] = (a)[0]; \
-  (r)[1] = (a)[1]; \
-  (r)[2] = (a)[2]; \
-  (r)[3] = (a)[3];}
-
-// ---------------------------------------------------------------------------------------
-
-#define Load256A(r, a) {\
-  (r)[0] = (a)[IDX]; \
-  (r)[1] = (a)[IDX+blockDim.x]; \
-  (r)[2] = (a)[IDX+2*blockDim.x]; \
-  (r)[3] = (a)[IDX+3*blockDim.x];}
-
-// ---------------------------------------------------------------------------------------
-
-#define Store256A(r, a) {\
-  (r)[IDX] = (a)[0]; \
-  (r)[IDX+blockDim.x] = (a)[1]; \
-  (r)[IDX+2*blockDim.x] = (a)[2]; \
-  (r)[IDX+3*blockDim.x] = (a)[3];}
 
 // ---------------------------------------------------------------------------------------
 
@@ -246,103 +175,8 @@ __device__ void MulP(uint64_t *r, uint64_t a) {
 }
 
 // ---------------------------------------------------------------------------------------
-
-__device__ void ModNeg256(uint64_t* r,uint64_t* a) {
-
-  uint64_t t[4];
-  USUBO(t[0],0ULL,a[0]);
-  USUBC(t[1],0ULL,a[1]);
-  USUBC(t[2],0ULL,a[2]);
-  USUBC(t[3],0ULL,a[3]);
-  UADDO(r[0],t[0],0xFFFFFFFEFFFFFC2FULL);
-  UADDC(r[1],t[1],0xFFFFFFFFFFFFFFFFULL);
-  UADDC(r[2],t[2],0xFFFFFFFFFFFFFFFFULL);
-  UADD(r[3],t[3],0xFFFFFFFFFFFFFFFFULL);
-
-}
-
+// 64-bit reference field multiply & square (used by bench/fieldmul.cu & bench/sm120_probe.cu)
 // ---------------------------------------------------------------------------------------
-
-__device__ void ModNeg256(uint64_t* r) {
-
-  uint64_t t[4];
-  USUBO(t[0],0ULL,r[0]);
-  USUBC(t[1],0ULL,r[1]);
-  USUBC(t[2],0ULL,r[2]);
-  USUBC(t[3],0ULL,r[3]);
-  UADDO(r[0],t[0],0xFFFFFFFEFFFFFC2FULL);
-  UADDC(r[1],t[1],0xFFFFFFFFFFFFFFFFULL);
-  UADDC(r[2],t[2],0xFFFFFFFFFFFFFFFFULL);
-  UADD(r[3],t[3],0xFFFFFFFFFFFFFFFFULL);
-
-}
-
-// ---------------------------------------------------------------------------------------
-
-
-
-__device__ void ModSub256(uint64_t* r, uint64_t* a, uint64_t* b) {
-    uint64_t borrow;
-    uint64_t p[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL,
-                      0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-
-    USUBO(r[0], a[0], b[0]);
-    USUBC(r[1], a[1], b[1]);
-    USUBC(r[2], a[2], b[2]);
-    USUBC(r[3], a[3], b[3]);
-    USUB(borrow, 0ULL, 0ULL); 
-
-    if (borrow) {
-        UADDO1(r[0], p[0]);
-        UADDC1(r[1], p[1]);
-        UADDC1(r[2], p[2]);
-        UADD1(r[3], p[3]);
-    }
-}
-
-
-__device__ void ModSub256(uint64_t* r, uint64_t* b) {
-    uint64_t borrow;
-    uint64_t p[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL,
-                      0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-
-    USUBO1(r[0], b[0]);
-    USUBC1(r[1], b[1]);
-    USUBC1(r[2], b[2]);
-    USUBC1(r[3], b[3]);
-    USUB(borrow, 0ULL, 0ULL); 
-
-    if (borrow) {
-        UADDO1(r[0], p[0]);
-        UADDC1(r[1], p[1]);
-        UADDC1(r[2], p[2]);
-        UADD1(r[3], p[3]);
-    }
-}
-
-
-__device__ void ModSub256isOdd(uint64_t* a, uint64_t* b, uint8_t* parity) {    //no need to compute py, we need only parity
-
-    uint64_t t;   
-    uint64_t T[4]; 
-
-    USUBO(T[0], a[0], b[0]);   
-    USUBC(T[1], a[1], b[1]);   
-    USUBC(T[2], a[2], b[2]);   
-    USUBC(T[3], a[3], b[3]);  
-
-    USUB(t, 0ULL, 0ULL);  // borrow
-
-    *parity = (T[0] & 1) ^ (t & 1);  // LSB of T[0] and LSB of t -> parity od sub
-}
-
-
-
-// ---------------------------------------------------------------------------------------
-// Compute a*b*(mod n)
-// a and b must be lower than n
-// ---------------------------------------------------------------------------------------
-
 
 __device__ void _ModMult(uint64_t *r, uint64_t *a, uint64_t *b) {
 
@@ -376,7 +210,7 @@ __device__ void _ModMult(uint64_t *r, uint64_t *a, uint64_t *b) {
   UADD1(r512[7], t[4]);
 
   // Reduce from 512 to 320
-  ReduceMult(t, (r512 + 4));
+  UMult(t, (r512 + 4), 0x1000003D1ULL);
   UADDO1(r512[0], t[0]);
   UADDC1(r512[1], t[1]);
   UADDC1(r512[2], t[2]);
@@ -392,62 +226,6 @@ __device__ void _ModMult(uint64_t *r, uint64_t *a, uint64_t *b) {
   UADD(r[3], r512[3], 0ULL);
 
 }
-
-
-
-
-__device__ void _ModMult(uint64_t *r, uint64_t *a) {
-
-  uint64_t r512[8];
-  uint64_t t[NBBLOCK];
-  uint64_t ah, al;
-  r512[5] = 0;
-  r512[6] = 0;
-  r512[7] = 0;
-
-  // 256*256 multiplier
-  UMult(r512, a, r[0]);
-  UMult(t, a, r[1]);
-  UADDO1(r512[1], t[0]);
-  UADDC1(r512[2], t[1]);
-  UADDC1(r512[3], t[2]);
-  UADDC1(r512[4], t[3]);
-  UADD1(r512[5], t[4]);
-  UMult(t, a, r[2]);
-  UADDO1(r512[2], t[0]);
-  UADDC1(r512[3], t[1]);
-  UADDC1(r512[4], t[2]);
-  UADDC1(r512[5], t[3]);
-  UADD1(r512[6], t[4]);
-  UMult(t, a, r[3]);
-  UADDO1(r512[3], t[0]);
-  UADDC1(r512[4], t[1]);
-  UADDC1(r512[5], t[2]);
-  UADDC1(r512[6], t[3]);
-  UADD1(r512[7], t[4]);
-
-  // Reduce from 512 to 320
-  ReduceMult(t, (r512 + 4));
-  UADDO1(r512[0], t[0]);
-  UADDC1(r512[1], t[1]);
-  UADDC1(r512[2], t[2]);
-  UADDC1(r512[3], t[3]);
-
-  // Reduce from 320 to 256
-  UADD1(t[4], 0ULL);
-  UMULLO(al, t[4], 0x1000003D1ULL);
-  UMULHI(ah, t[4], 0x1000003D1ULL);
-  UADDO(r[0], r512[0], al);
-  UADDC(r[1], r512[1], ah);
-  UADDC(r[2], r512[2], 0ULL);
-  UADD(r[3], r512[3], 0ULL);
-
-}
-
-
-
-
-
 
 __device__ void _ModSqr(uint64_t *rp, const uint64_t *up) {
 

@@ -61,9 +61,8 @@ input (a pipe, `</dev/null`, some launchers), the tool runs without keyboard con
 ## Results
 
 **A line says `Warning, wrong private key generated !`.** The CPU re-derivation of a GPU hit did not
-match. The key is not reported. On most builds this never happens; if a build prints it for every hit,
-its CPU SHA-256 is miscompiled (you will also see a `[WARNING] The CPU SHA-256 of this build is wrong`
-line at start-up) — rebuild with the provided scripts / a standard compiler.
+match. The key is not reported as verified, though the candidate key is printed as `CandKey:`. On
+standard builds this never happens; rebuild with the provided scripts and run the self-test below.
 
 **I expected a hit and got none.** Make sure the key is really inside `-start … -start + 2^range - 1`.
 For a puzzle, check the range in [puzzle-search.md](puzzle-search.md). A sanity check is to search a

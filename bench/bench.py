@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Orion contributors. See LICENSE.txt.
 """Correctness self-test and A/B speed benchmark for Orion builds.
 
   python bench/bench.py selftest build/opt/orion.exe [--bits 36] [--n 3] [--target single]
