@@ -4,7 +4,7 @@
 
   python bench/build.py opt                      # current working tree  -> build/opt/orion.exe
   python bench/build.py base --ref main          # a git ref (exported)  -> build/base/orion.exe
-  python bench/build.py test --nvflags "-maxrregcount=128"
+  python bench/build.py test --nvflags="-maxrregcount=128"   # '=' form: the value starts with '-'
 
 Pass --ptxas-v to print register/local-memory usage of the kernel.
 """

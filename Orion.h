@@ -24,6 +24,12 @@ extern double t_Paused;                  // run time accumulated before this (re
 extern uint32_t backupThreads;           // GPU thread count recorded in the loaded backup, 0 if unknown
 extern uint32_t backupStepSize;          // keys per thread per launch recorded in the loaded backup, 0 if unknown
 extern bool randomMode;
+extern bool jsonMode;                    // -json: machine-readable event lines for a front end
+
+// -json event line: "@" + one JSON object
+void emitJson(const std::string& obj);
+// s as a quoted JSON string
+std::string jsonString(const std::string& s);
 
 typedef struct {
 
@@ -50,7 +56,6 @@ typedef struct {
 	Int      finish;
 	uint32_t nbThread;   // GPU threads (the key layout depends on it)
 	uint32_t stepSize;   // keys per thread per launch
-	bool     legacy;     // old 12-byte file without range/layout, cannot be validated
 
 } BACKUP_STATE;
 
@@ -85,7 +90,7 @@ private:
 	void FindKeyGPU(int gpuId);
 	bool checkPrivKey(const std::string& addr, const Int& key);
 	void checkAddr(int prefIdx, const uint8_t* hash160, const Int& key);
-	void scanCPUWindow(const Int& firstKey, const Int& lastKey, const Int* skipKey);
+	void scanCPUWindow(const Int& firstKey, const Int& lastKey);
 	void output(const std::string& addr, const std::string& pAddr, const std::string& pAddrHex, const std::string& pubKey);
 
 	bool isSingularAddress(const std::string& pref);

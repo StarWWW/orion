@@ -82,6 +82,9 @@ int _ConvertSMVer2Cores(int major, int minor) {
 #ifndef ORION_SUBGRP
 #define ORION_SUBGRP ORION_GRP
 #endif
+#if ORION_SUBGRP < 2 || ORION_SUBGRP > ORION_GRP || ORION_GRP % ORION_SUBGRP != 0
+#error "ORION_SUBGRP must divide ORION_GRP (128, 256, 512 or 1024)"
+#endif
 
 // Optional single-pass pair EC (1 computes P+(i+1)G and P-(i+1)G together to fit 96 regs / 5 blk/SM;
 // 0 interleaves EC+ -> Hash+ -> EC- -> Hash- which wins on both cycles and 80W wall-clock).
@@ -566,6 +569,13 @@ void GPUEngine::PrintCudaInfo() {
 
         printf("GPU #%d %s (sm_%d%d, %d SMs, %.1f GB)\n", i, deviceProp.name, deviceProp.major, deviceProp.minor,
             deviceProp.multiProcessorCount, (double)deviceProp.totalGlobalMem / (1024.0 * 1024.0 * 1024.0));
+        if (jsonMode) {
+            char nums[128];
+            snprintf(nums, sizeof(nums), ",\"sm\":%d,\"sms\":%d,\"memory\":%.0f}",
+                deviceProp.major * 10 + deviceProp.minor, deviceProp.multiProcessorCount,
+                (double)deviceProp.totalGlobalMem);
+            emitJson("{\"event\":\"gpu\",\"id\":" + std::to_string(i) + ",\"name\":" + jsonString(deviceProp.name) + nums);
+        }
 
     }
 
@@ -765,7 +775,6 @@ bool GPUEngine::SetKeys(Point* p) {
     }
 
     return callKernel();
-    //return true;
 
 }
 

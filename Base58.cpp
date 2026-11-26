@@ -128,11 +128,6 @@ std::string EncodeBase58(const unsigned char* pbegin, const unsigned char* pend)
 
 }
 
-std::string EncodeBase58(const std::vector<unsigned char>& vch)
-{
-    return EncodeBase58(vch.data(), vch.data() + vch.size());
-}
-
 bool DecodeBase58(const std::string& str, std::vector<unsigned char>& vchRet)
 {
     return DecodeBase58(str.c_str(), vchRet);

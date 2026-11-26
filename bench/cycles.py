@@ -9,7 +9,7 @@ captures power/clock effects (power-capped laptops).
   python bench/cycles.py build/ref/orion.exe build/tpb128/orion.exe@0.5
     (@k = keys per launch relative to the first build, e.g. a half-size grid; results are per key)
 """
-import argparse, glob, os, re, shutil, statistics, subprocess, sys
+import argparse, glob, os, re, shutil, statistics, subprocess, sys, tempfile
 
 
 def _ver_key(path):
@@ -58,12 +58,14 @@ def parse_locale_number(s):
 
 
 def cycles(ncu, exe):
-    r = subprocess.run([ncu, '--kernel-name', 'regex:comp_keys', '--launch-skip', '2', '--launch-count', '1',
-                        '--clock-control', 'base', '--metrics', 'sm__cycles_elapsed.avg,sm__inst_executed.sum',
-                        exe, '-gpuId', '0', '-start', '400000000000000000', '-range', '35',
-                        '1BitcoinEaterAddressDontSendf59kuE'],
-                       capture_output=True, text=True, encoding='utf-8', errors='replace',
-                       cwd=os.path.dirname(exe), timeout=600)
+    # Scratch directory: the run writes orion_backup_gpu0.dat, which must not touch a real search's backup
+    with tempfile.TemporaryDirectory(prefix='orion-cycles-') as cwd:
+        r = subprocess.run([ncu, '--kernel-name', 'regex:comp_keys', '--launch-skip', '2', '--launch-count', '1',
+                            '--clock-control', 'base', '--metrics', 'sm__cycles_elapsed.avg,sm__inst_executed.sum',
+                            exe, '-gpuId', '0', '-start', '400000000000000000', '-range', '35',
+                            '1BitcoinEaterAddressDontSendf59kuE'],
+                           capture_output=True, text=True, encoding='utf-8', errors='replace',
+                           cwd=cwd, timeout=600)
     out = r.stdout.replace('\r', '\n')
     def num(name):
         m = re.search(name + r'\s+\S+\s+([\d.,]+)', out)

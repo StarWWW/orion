@@ -22,9 +22,8 @@
 #include <string>
 #include <vector>
 
-// Address type
+// Address type (compressed public keys only)
 #define P2PKH  0
-#define P2SH   1
 #define BECH32 2
 
 class Secp256K1 {
@@ -35,19 +34,16 @@ public:
   ~Secp256K1();
   void Init();
   Point ComputePublicKey(Int *privKey);
-  bool  EC(Point &p);
 
-  void GetHash160(int type, bool compressed, Point &pubKey, unsigned char *hash);
+  void GetHash160(Point &pubKey, unsigned char *hash);
 
-  std::string GetAddress(int type, bool compressed, Point &pubKey);
-  std::string GetAddress(int type, bool compressed, unsigned char *hash160);
-  std::string GetPrivAddress(bool compressed, Int &privKey);
-  std::string GetPublicKeyHex(bool compressed, Point &p);
+  std::string GetAddress(int type, Point &pubKey);
+  std::string GetAddress(int type, unsigned char *hash160);
+  std::string GetPrivAddress(Int &privKey);
+  std::string GetPublicKeyHex(Point &p);
 
-  Point Add(Point &p1, Point &p2);
   Point Add2(Point &p1, Point &p2);
   Point AddDirect(Point &p1, Point &p2);
-  Point Double(Point &p);
   Point DoubleDirect(Point &p);
 
   Point G;                 // Generator
@@ -55,7 +51,6 @@ public:
 
 private:
 
-  Int GetY(Int x, bool isEven);
   Point GTable[256*32];       // Generator table
 
 };

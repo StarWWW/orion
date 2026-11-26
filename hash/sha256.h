@@ -18,12 +18,9 @@
 #ifndef SHA256_H
 #define SHA256_H
 #include <cstdint>
-#include <string>
 
 void sha256(uint8_t *input, int length, uint8_t *digest);
 void sha256_33(uint8_t *input, uint8_t *digest);
-void sha256_65(uint8_t *input, uint8_t *digest);
 void sha256_checksum(uint8_t *input, int length, uint8_t *checksum);
-std::string sha256_hex(unsigned char *digest);
 
 #endif

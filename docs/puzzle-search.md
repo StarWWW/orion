@@ -3,7 +3,8 @@
 The [Bitcoin puzzle](https://privatekeys.pw/puzzles/bitcoin-puzzle-tx) is a set of addresses whose
 private keys lie in known ranges: puzzle **N** has its key between `2^(N-1)` and `2^N - 1`. The low
 puzzles, and many higher ones, have been solved. The unsolved ones still carry a prize; check a puzzle
-list for which ones are still open. This page shows how to point the tool at one and what to expect.
+list for which ones are still open (the [desktop app](gui.md) has one built in, with the addresses and
+prizes). This page shows how to point the tool at one and what to expect.
 
 ## The range of a puzzle
 

@@ -28,11 +28,12 @@
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <conio.h> // For _kbhit and _getch on Windows
-#include <io.h>
+#include <windows.h>
 #else
 #include <termios.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #endif
 
 std::atomic<bool> Pause(false);
@@ -43,11 +44,55 @@ double t_Paused = 0;
 uint32_t backupThreads = 0;
 uint32_t backupStepSize = 0;
 bool randomMode = false;
+bool jsonMode = false;
+
+// -json: a front end drives the search through stdin, one command per line. Raw reads (not stdio)
+// so that exit() never waits on a stdin lock held by this blocked thread.
+static void readCommands() {
+	std::string pending;
+	char buf[256];
+	for (;;) {
+#if defined(_WIN32) || defined(_WIN64)
+		DWORD n = 0;
+		if (!ReadFile(GetStdHandle(STD_INPUT_HANDLE), buf, sizeof(buf), &n, NULL) || n == 0)
+			break;
+#else
+		ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
+		if (n < 0 && errno == EINTR)
+			continue;
+		if (n <= 0)
+			break;
+#endif
+		pending.append(buf, (size_t)n);
+		size_t nl;
+		while ((nl = pending.find('\n')) != std::string::npos) {
+			std::string cmd = pending.substr(0, nl);
+			pending.erase(0, nl + 1);
+			while (!cmd.empty() && isspace((unsigned char)cmd.back()))
+				cmd.pop_back();
+			if (cmd == "pause") Pause = true;
+			else if (cmd == "resume") Pause = false;
+			else if (cmd == "stop") stopRequested = true;
+		}
+	}
+	// The front end closed the pipe or went away: save the progress and stop, like Ctrl+C.
+	// End of file on /dev/null or a regular file is no such signal.
+#if defined(_WIN32) || defined(_WIN64)
+	bool fromPipe = GetFileType(GetStdHandle(STD_INPUT_HANDLE)) == FILE_TYPE_PIPE;
+#else
+	struct stat st;
+	bool fromPipe = fstat(STDIN_FILENO, &st) == 0 && (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode));
+#endif
+	if (fromPipe)
+		stopRequested = true;
+}
 
 #if defined(_WIN32) || defined(_WIN64)
 
+// _isatty() is also true for NUL, while _kbhit() reads the console whatever stdin is
 static bool stdinIsTerminal() {
-	return _isatty(_fileno(stdin)) != 0;
+	DWORD mode;
+	return GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &mode) != 0;
 }
 
 static void restoreTerminal() {
@@ -153,7 +198,9 @@ void printUsage() {
 	printf(" -random       Random mode: at each step every GPU thread jumps to the same random offset\n");
 	printf("               within its own slice of the range\n");
 	printf(" -backup       Resume a sequential search from orion_backup_gpu<N>.dat (written every 60 launches,\n");
-	printf("               on pause and on Ctrl+C). The file must belong to the same range and GPU model.\n\n");
+	printf("               on pause and on Ctrl+C). The file must belong to the same range and GPU model.\n");
+	printf(" -json         For front ends: also print JSON event lines (starting with @) and read the\n");
+	printf("               commands pause, resume and stop from stdin, one per line\n\n");
 	printf("Addresses: compressed P2PKH (1...) or P2WPKH (bc1q...), full addresses or prefixes.\n");
 	printf("Keys while running: p = pause/resume (releases the GPU), Ctrl+C = save progress and quit.\n");
 }
@@ -296,6 +343,14 @@ int main(int argc, char* argv[]) {
 	// Curve order - 1, the largest valid private key
 	maxKey.SetBase16((char*)"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364140");
 
+	// -json also changes the output of -l, so it is looked for before the other options. Unbuffered:
+	// a front end reading the pipe sees every line as soon as it is printed.
+	for (int i = 1; i < argc; i++)
+		if (strcmp(argv[i], "-json") == 0)
+			jsonMode = true;
+	if (jsonMode)
+		setvbuf(stdout, NULL, _IONBF, 0);
+
 	while (a < argc) {
 
 		if (strcmp(argv[a], "-gpuId") == 0) {
@@ -347,6 +402,9 @@ int main(int argc, char* argv[]) {
 		}
 		else if (strcmp(argv[a], "-backup") == 0) {
 			backupMode = true;
+			a++;
+		}
+		else if (strcmp(argv[a], "-json") == 0) {
 			a++;
 		}
 		else if (strcmp(argv[a], "-range") == 0) {
@@ -440,12 +498,6 @@ int main(int argc, char* argv[]) {
 		if (!readBackup(backupFile, &st)) {
 			fprintf(stdout, "[backup]    %s not found or unreadable, starting from the beginning\n", backupFile.c_str());
 		}
-		else if (st.legacy) {
-			fprintf(stdout, "[backup]    %s is in the old format (no range recorded): make sure -start/-range\n"
-				"            and the GPU are the same as in the original run\n", backupFile.c_str());
-			idxcount = st.idxcount;
-			t_Paused = st.elapsed;
-		}
 		else if (!st.start.IsEqual(&bc->ksStart) || !st.finish.IsEqual(&bc->ksFinish)) {
 			fprintf(stderr, "[ERROR] %s belongs to another range:\n", backupFile.c_str());
 			fprintf(stderr, "        start=%s\n", st.start.GetBase16().c_str());
@@ -488,13 +540,16 @@ int main(int argc, char* argv[]) {
 #endif
 	atexit(restoreTerminal);
 
-	// Only an interactive console can pause; a pipe or /dev/null as stdin must stay untouched
-	std::thread inputThread;
-	if (stdinIsTerminal())
-		inputThread = std::thread(monitorKeypress);
-
 	int status = SEARCH_RUNNING;
 	Pause = false;
+
+	// Only an interactive console can pause; a pipe or /dev/null as stdin must stay untouched.
+	// With -json, stdin carries the front end's commands instead.
+	std::thread inputThread;
+	if (jsonMode)
+		std::thread(readCommands).detach();
+	else if (stdinIsTerminal())
+		inputThread = std::thread(monitorKeypress);
 
 	// One search object for the whole run: a resume after a pause keeps the addresses already
 	// found, so -stop still stops once every address has been found
@@ -516,6 +571,8 @@ int main(int argc, char* argv[]) {
 			break;
 		}
 		fprintf(stdout, "\nResuming...\n");
+		if (jsonMode)
+			emitJson("{\"event\":\"state\",\"state\":\"resuming\"}");
 	}
 
 	stopMonitorKey = true;
@@ -528,6 +585,12 @@ int main(int argc, char* argv[]) {
 	delete v;
 	if (nbFound > 0)
 		fprintf(stdout, "\nFound %d key(s)%s%s\n", nbFound, outputFile.empty() ? "" : ", saved to ", outputFile.c_str());
+	if (jsonMode) {
+		static const char* names[] = { "running", "finished", "allfound", "paused", "stopped", "error" };
+		char ev[128];
+		snprintf(ev, sizeof(ev), "{\"event\":\"end\",\"status\":\"%s\",\"found\":%d}", names[status], nbFound);
+		emitJson(ev);
+	}
 	fflush(stdout);
 
 	delete secp;

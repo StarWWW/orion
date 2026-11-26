@@ -19,27 +19,9 @@
 #define RIPEMD160_H
 
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
-#include <string>
 
-/** A hasher class for RIPEMD-160. */
-class CRIPEMD160
-{
-private:
-    uint32_t s[5];
-    unsigned char buf[64];
-    uint64_t bytes;
-
-public:
-    CRIPEMD160();
-    void Write(const unsigned char* data, size_t len);
-    void Finalize(unsigned char hash[20]);
-};
-
-void ripemd160(unsigned char *input, int length, unsigned char *digest);
 void ripemd160_32(unsigned char *input, unsigned char *digest);
-std::string ripemd160_hex(unsigned char *digest);
 
 static inline bool ripemd160_comp_hash(const uint8_t *h0, const uint8_t *h1) {
   return memcmp(h0, h1, 20) == 0;

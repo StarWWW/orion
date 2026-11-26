@@ -102,8 +102,10 @@ orion [-gpuId N] [-start HEX] [-range BITS | -end HEX] [-stop] [-random] [-backu
 | `-random` | At every step all GPU threads jump to the same random offset within their own slice of the range. |
 | `-backup` | Resume from `orion_backup_gpu<N>.dat`. Written every 60 launches, on pause, on Ctrl+C and at the end. A new run without `-backup` keeps the previous file as `.prev`. |
 | `-i file` / `-o file` | Addresses to search (one per line, `#` comments) / file the found keys are appended to (with public key and time). |
+| `-m N` | Maximum hits stored per kernel launch, default 262144. Raise it only after an "items lost" warning. |
 | `-gpuId N` | GPU to use. One GPU per process: run one instance per GPU. |
 | `-l` | List the CUDA devices. |
+| `-json` | For front ends: JSON event lines on stdout, `pause`/`resume`/`stop` commands on stdin (see [docs/usage.md](docs/usage.md#front-ends--json)). |
 | `-h`, `-v` | Help, version. |
 
 While running, `p` pauses and releases the GPU, and `p` again resumes. **Ctrl+C** saves the progress
@@ -127,6 +129,21 @@ python bench/build.py opt            # -> build/opt/orion.exe, sm_120 (--arch 89
 `Orion.sln` also builds in Visual Studio for `sm_75 … sm_120` using the CUDA toolkit pointed to by
 `CUDA_PATH` (`msbuild /p:CudaVersion=12.8` selects another installed version).
 
+## Desktop app
+
+`orion-gui` is a native Qt 6 Quick front end for Windows and Linux: it sets up a search (targets, puzzle
+range presets, sequential or random mode, GPU), shows the speed, progress, odds and log live, resumes saved
+progress, and lists the found keys. It runs the `orion` engine above, so build that first.
+
+```bash
+python gui/build.py                                          # Windows -> build/gui/orion-gui.exe
+cmake -S gui -B build/gui && cmake --build build/gui         # Linux   -> build/gui/orion-gui
+```
+
+![Orion desktop app](docs/images/gui-monitor.png)
+
+See [docs/gui.md](docs/gui.md) for requirements and details.
+
 ## Verify before you trust it
 
 ```bash
@@ -148,6 +165,7 @@ Full guides are in [`docs/`](docs/):
 * [Searching a puzzle](docs/puzzle-search.md) — puzzle ranges, realistic odds, and handling a found key safely.
 * [Troubleshooting](docs/troubleshooting.md) — build and runtime errors and their fixes.
 * [How it works](docs/how-it-works.md) — what the GPU and CPU do for every key.
+* [Desktop app](docs/gui.md) — building and using the Qt front end on Windows and Linux.
 
 ## License
 

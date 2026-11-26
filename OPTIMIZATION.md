@@ -130,8 +130,10 @@ python bench/bench.py speed  build/ref/orion.exe build/opt/orion.exe
 python bench/cycles.py       build/ref/orion.exe build/opt/orion.exe
 ```
 
-`bench/cycles.py` requires Nsight Compute and GPU performance-counter access. A build with a
-different amount of work per launch takes a suffix, e.g. `build/x/orion.exe@0.5`.
+`build/ref` is any reference build to compare against, e.g. an earlier commit:
+`python bench/build.py ref --ref <commit>`. `bench/cycles.py` requires Nsight Compute and GPU
+performance-counter access. A build with a different amount of work per launch takes a suffix, e.g.
+`build/x/orion.exe@0.5`.
 
 Build-time options (`-D…`, see `bench/sweep.py`):
 

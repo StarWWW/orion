@@ -28,11 +28,6 @@
 std::string EncodeBase58(const unsigned char* pbegin, const unsigned char* pend);
 
 /**
- * Encode a byte vector as a base58-encoded string
- */
-std::string EncodeBase58(const std::vector<unsigned char>& vch);
-
-/**
  * Decode a base58-encoded string (psz) into a byte vector (vchRet).
  * return true if decoding is successful.
  * psz cannot be nullptr.

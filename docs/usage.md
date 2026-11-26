@@ -23,11 +23,13 @@ one address (or `-i file`). With no arguments the tool prints its help and exits
 | `-m N` | Maximum hits stored per kernel launch, default 262144. Raise it only if you search a huge list and see an "items lost" warning. |
 | `-gpuId N` | Which GPU to use (default 0). See [Several GPUs](#several-gpus). |
 | `-l` | List the CUDA devices with their index, name and memory, then exit. |
+| `-json` | For front ends such as the desktop app: see [Front ends](#front-ends--json). |
 | `-h` | Print the built-in help and exit. |
 | `-v` | Print the version and exit. |
 
-A range given two ways is refused: use `-range` or `-end`, not both. A key beyond the secp256k1 curve
-order is clipped to it, and `-start 0` becomes `-start 1` (0 is not a valid private key).
+A range given two ways is refused: use `-range` or `-end`, not both. A `-start` or `-end` beyond the
+secp256k1 curve order is refused, a `-range` that runs past it is clipped to it, and `-start 0` becomes
+`-start 1` (0 is not a valid private key).
 
 ## Addresses
 
@@ -114,10 +116,28 @@ orion -start 8000000000 -range 40 -backup -o found.txt 1PWo3JeB9jrGwfHDNpdGK54CR
 
 If the backup belongs to another range, or was made on a GPU with a different thread count or a build
 with a different group size (`ORION_GRP`), resuming is refused rather than silently skipping keys. A
-legacy 12-byte backup (no range recorded) still loads, with a warning to check the range yourself.
+file that is not an Orion backup is treated as missing and the search starts from the beginning.
 
 When you start a fresh sequential run and a backup already exists, it is moved aside to
 `orion_backup_gpu<N>.dat.prev` so you can still resume the earlier search.
+
+## Front ends (-json)
+
+With `-json` the tool prints its usual output plus one JSON object per line, prefixed with `@`, and reads
+commands from stdin, one per line: `pause` (releases the GPU, like `p`), `resume` and `stop` (saves and
+exits, like Ctrl+C). When stdin is a pipe and gets closed, the search is stopped as if `stop` was sent,
+so a front end that crashes does not leave the GPU busy. The events:
+
+| `event` | Fields |
+|---|---|
+| `gpu` | `id`, `name`, `sm`, `sms`, `memory` (bytes); printed by `-json -l` |
+| `start` | `gpu`, `gpuId`, `start`, `end` (hex), `threads`, `keysPerLaunch`, `range`, `random`, `backups`, `targets`, `keysDone`, `elapsed`; also after a resume from pause |
+| `status` | `speed` (MK/s), `keysDone`, `percent`, `elapsed`, `eta` (seconds, -1 when unknown), `found`; once per kernel launch, instead of the progress line |
+| `found` | `address`, `type` (`p2pkh`/`p2wpkh`), `wif`, `hex`, `pubkey`, `saved` |
+| `state` | `state`: `paused` or `resuming` |
+| `end` | `status`: `finished`, `allfound`, `stopped` or `error`; `found` |
+
+`python bench/bench.py protocol build/opt/orion.exe` checks this protocol.
 
 ## Several GPUs
 

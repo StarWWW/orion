@@ -4,6 +4,7 @@
 
   python bench/bench.py selftest build/opt/orion.exe [--bits 36] [--n 3] [--target single]
   python bench/bench.py speed build/base/orion.exe build/opt/orion.exe [--seconds 40] [--rounds 3]
+  python bench/bench.py protocol build/opt/orion.exe
 
 selftest hides a random key in an aligned 2^bits range, asks the tool to find it and
 verifies the reported key independently (pure-Python secp256k1 + hash160). --target picks the
@@ -12,8 +13,10 @@ GPU path under test:
   multi   four full P2PKH addresses (lookup32 h[2] path)    prefix  leading characters of the address
 speed runs the builds interleaved (A B A B ...) on the same range so thermal drift
 hits all of them equally, and reports the median MK/s after a warm-up period.
+protocol checks the -json mode the desktop front end relies on: the event lines, the pause, resume
+and stop commands on stdin, and that closing stdin stops the search.
 """
-import argparse, hashlib, os, re, secrets, statistics, subprocess, sys, threading, time
+import argparse, hashlib, json, os, queue, re, secrets, statistics, subprocess, sys, tempfile, threading, time
 
 _P = 2**256 - 2**32 - 977
 _N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
@@ -145,8 +148,15 @@ RX_SPEED = re.compile(r'([\d.]+)\s*MK/s')
 
 def run_tool(cmd, timeout, on_line):
     """Runs cmd, calls on_line(line) for every \\r/\\n separated line; stops when it returns True."""
+    # In a scratch directory: the test runs write and rotate orion_backup_gpu<N>.dat, which must not
+    # touch the backup of a real search
+    with tempfile.TemporaryDirectory(prefix='orion-bench-') as cwd:
+        _run_tool(cmd, timeout, on_line, cwd)
+
+
+def _run_tool(cmd, timeout, on_line, cwd):
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                         cwd=os.path.dirname(os.path.abspath(cmd[0])))
+                         cwd=cwd)
     stop, buf = threading.Event(), b''
     timer = threading.Timer(timeout, lambda: (stop.set(), p.kill()))
     timer.start()
@@ -220,9 +230,56 @@ def speed(exe, start, bits, seconds, warmup):
     return statistics.median(samples) if samples else 0.0
 
 
+def protocol(exe):
+    """Drives orion -json like the front end does; True when every expected event arrives."""
+    with tempfile.TemporaryDirectory(prefix='orion-bench-') as cwd:
+        def run(steps):
+            p = subprocess.Popen([exe, '-json', '-start', '400000000000', '-range', '44',
+                                  '1BitcoinEaterAddressDontSendf59kuE'],
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=cwd)
+            events = queue.Queue()
+
+            def reader():
+                for line in iter(p.stdout.readline, b''):
+                    for part in line.split(b'\r'):
+                        if part.startswith(b'@'):
+                            events.put(json.loads(part[1:]))
+                events.put(None)
+            threading.Thread(target=reader, daemon=True).start()
+            try:
+                for send, want in steps:
+                    if send == 'EOF':
+                        p.stdin.close()
+                    elif send:
+                        p.stdin.write(send.encode() + b'\n'); p.stdin.flush()
+                    deadline = time.time() + 60
+                    while True:
+                        ev = events.get(timeout=max(0.1, deadline - time.time()))
+                        if ev is None:
+                            print(f'  FAIL  engine ended while waiting for {want}')
+                            return False
+                        if all(ev.get(k) == v for k, v in want.items()):
+                            print(f'  ok    {send or "-":6} -> {want}')
+                            break
+                p.wait(timeout=60)
+                return p.returncode == 0
+            except queue.Empty:
+                print(f'  FAIL  timeout waiting for {want}')
+                return False
+            finally:
+                if p.poll() is None:
+                    p.kill()
+
+        return run([(None, {'event': 'start'}), (None, {'event': 'status'}),
+                    ('pause', {'event': 'state', 'state': 'paused'}),
+                    ('resume', {'event': 'state', 'state': 'resuming'}), (None, {'event': 'start'}),
+                    ('stop', {'event': 'end', 'status': 'stopped'})]) and \
+               run([(None, {'event': 'status'}), ('EOF', {'event': 'end', 'status': 'stopped'})])
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('mode', choices=['selftest', 'speed'])
+    ap.add_argument('mode', choices=['selftest', 'speed', 'protocol'])
     ap.add_argument('exes', nargs='+')
     ap.add_argument('--bits', type=int, default=36)
     ap.add_argument('--n', type=int, default=3)
@@ -237,6 +294,9 @@ def main():
     if a.mode == 'selftest':
         bad = [e for e in a.exes if not (print(e) or selftest(e, a.bits, a.n, timeout=300, random=a.random,
                                                              target=a.target))]
+        sys.exit(1 if bad else 0)
+    if a.mode == 'protocol':
+        bad = [e for e in a.exes if not (print(e) or protocol(e))]
         sys.exit(1 if bad else 0)
     start = (1 << 70) + (secrets.randbelow(1 << 30) << 40)
     res = {e: [] for e in a.exes}

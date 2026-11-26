@@ -8,6 +8,7 @@
   odds, and what to do if you ever find a key.
 * **[troubleshooting.md](troubleshooting.md)** — build and runtime errors and how to fix them.
 * **[how-it-works.md](how-it-works.md)** — what the GPU and CPU do for every key.
+* **[gui.md](gui.md)** — the desktop app: building it on Windows and Linux, and what it shows.
 
 For the Blackwell optimisation itself (what changed, how it was measured, and the experiments that
 did not pay off), see [../OPTIMIZATION.md](../OPTIMIZATION.md).
