@@ -1,0 +1,18 @@
+# build output
+build/
+obj/
+*.o
+*.exe
+/orion
+__pycache__/
+# profiler reports
+*.ncu-rep
+*.ncu-repz
+*.nsys-rep
+*.sqlite
+# local helper, not part of the project
+/publish.ps1
+# runtime backup files
+orion_backup_*.dat
+orion_backup_*.dat.prev
+orion_backup_*.dat.tmp
