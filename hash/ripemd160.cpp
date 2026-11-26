@@ -241,47 +241,6 @@ void Transform(uint32_t* s, const unsigned char* chunk)
 
 } // namespace ripemd160
 
-CRIPEMD160::CRIPEMD160() : bytes(0)
-{
-  _ripemd160::Initialize(s);
-}
-
-void CRIPEMD160::Write(const unsigned char* data, size_t len)
-{
-    const unsigned char* end = data + len;
-    size_t bufsize = bytes % 64;
-    if (bufsize && bufsize + len >= 64) {
-        // Fill the buffer, and process it.
-        memcpy(buf + bufsize, data, 64 - bufsize);
-        bytes += 64 - bufsize;
-        data += 64 - bufsize;
-        _ripemd160::Transform(s, buf);
-        bufsize = 0;
-    }
-    while (end >= data + 64) {
-        // Process full chunks directly from the source.
-        _ripemd160::Transform(s, data);
-        bytes += 64;
-        data += 64;
-    }
-    if (end > data) {
-        // Fill the buffer with what remains.
-        memcpy(buf + bufsize, data, end - data);
-        bytes += end - data;
-    }
-}
-
-void CRIPEMD160::Finalize(unsigned char hash[20])
-{
-    static const unsigned char pad[64] = {0x80};
-    unsigned char sizedesc[8];
-    uint64_t bitlen = bytes << 3;
-    memcpy(sizedesc, &bitlen, 8);
-    Write(pad, 1 + ((119 - (bytes % 64)) % 64));
-    Write(sizedesc, 8);
-    memcpy(hash, s, 20);
-}
-
 static const uint64_t sizedesc_32 = 32 << 3;
 static const unsigned char pad[64] = { 0x80 };
 
@@ -293,23 +252,5 @@ void ripemd160_32(unsigned char *input, unsigned char *digest) {
   memcpy(input + 56, &sizedesc_32, 8);
   _ripemd160::Transform(s, input);
   memcpy(digest, s, 20);
-
-}
-
-void ripemd160(unsigned char *input,int length,unsigned char *digest) {
-
-	CRIPEMD160 cripe;
-	cripe.Write(input,length);
-	cripe.Finalize(digest);
-
-}
-
-std::string ripemd160_hex(unsigned char *digest) {
-
-  char buf[2 * 20 + 1];
-  buf[2 * 20] = 0;
-  for (int i = 0; i < 20; i++)
-    sprintf(buf + i * 2, "%02hhX", (int)digest[i]);
-  return std::string(buf);
 
 }

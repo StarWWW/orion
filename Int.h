@@ -56,120 +56,72 @@ public:
   void SubOne();
   void Mult(Int *a);
   uint64_t Mult(uint64_t a);
-  uint64_t IMult(int64_t a);
   uint64_t Mult(Int *a,uint64_t b);
   uint64_t IMult(Int *a, int64_t b);
   void Mult(Int *a,Int *b);
   void Div(Int *a,Int *mod = NULL);
-  void MultModN(Int *a, Int *b, Int *n);
   void Neg();
-  void Abs();
 
   // Right shift (signed)
   void ShiftR(uint32_t n);
-  void ShiftR32Bit();
   void ShiftR64Bit();
   // Left shift
   void ShiftL(uint32_t n);
-  void ShiftL32Bit();
   void ShiftL64Bit();
-  // Bit swap
-  void SwapBit(int bitNumber);
 
-
-  // Comp 
+  // Comp
   bool IsGreater(Int *a);
   bool IsGreaterOrEqual(Int *a);
-  bool IsLowerOrEqual(Int *a);
   bool IsLower(Int *a);
   bool IsEqual(Int *a);
   bool IsZero();
   bool IsOne();
-  bool IsStrictPositive();
   bool IsPositive();
   bool IsNegative();
   bool IsEven();
-  bool IsOdd();
-
 
   double ToDouble();
 
   // Modular arithmetic
 
-  // Setup field
-  // n is the field characteristic
-  // R used in Montgomery mult (R = 2^size(n))
-  // R2 = R^2, R3 = R^3, R4 = R^4
-  static void SetupField(Int *n, Int *R = NULL, Int *R2 = NULL, Int *R3 = NULL, Int *R4 = NULL);
-  static Int *GetR();                            // Return R
-  static Int *GetR2();                           // Return R2
-  static Int *GetR3();                           // Return R3
-  static Int *GetR4();                           // Return R4
-  static Int* GetFieldCharacteristic();          // Return field characteristic
+  // Setup field: n is the field characteristic
+  static void SetupField(Int *n);
 
-  void GCD(Int *a);                          // this <- GCD(this,a)
   void Mod(Int *n);                          // this <- this (mod n)
   void ModInv();                             // this <- this^-1 (mod n)
   void MontgomeryMult(Int *a,Int *b);        // this <- a*b*R^-1 (mod n)
-  void MontgomeryMult(Int *a);               // this <- this*a*R^-1 (mod n)
   void ModAdd(Int *a);                       // this <- this+a (mod n) [0<a<P]
   void ModAdd(Int *a,Int *b);                // this <- a+b (mod n) [0<a,b<P]
   void ModAdd(uint64_t a);                   // this <- this+a (mod n) [0<a<P]
   void ModSub(Int *a);                       // this <- this-a (mod n) [0<a<P]
   void ModSub(Int *a, Int *b);               // this <- a-b (mod n) [0<a,b<P]
   void ModSub(uint64_t a);                   // this <- this-a (mod n) [0<a<P]
-  void ModMul(Int *a,Int *b);                // this <- a*b (mod n) 
-  void ModMul(Int *a);                       // this <- this*b (mod n) 
-  void ModSquare(Int *a);                    // this <- a^2 (mod n) 
-  void ModCube(Int *a);                      // this <- a^3 (mod n) 
-  void ModDouble();                          // this <- 2*this (mod n) 
-  void ModExp(Int *e);                       // this <- this^e (mod n) 
+  void ModMul(Int *a,Int *b);                // this <- a*b (mod n)
+  void ModDouble();                          // this <- 2*this (mod n)
   void ModNeg();                             // this <- -this (mod n)
-  void ModSqrt();                            // this <- +/-sqrt(this) (mod n)
-  bool HasSqrt();                            // true if this admit a square root
 
   // Specific SecpK1
-  static void InitK1(Int *order);
   void ModMulK1(Int *a, Int *b);
   void ModMulK1(Int *a);
   void ModSquareK1(Int *a);
-  void ModMulK1order(Int *a);
-  void ModAddK1order(Int *a,Int *b);
-  void ModAddK1order(Int *a);
-  void ModSubK1order(Int *a);
-  void ModNegK1order();
-  uint32_t ModPositiveK1();
 
   // Size
   int GetSize();       // Number of significant 32bit limbs
   int GetSize64();     // Number of significant 64bit limbs
-  int GetBitLength();  // Number of significant bits
 
   // Setter
   void SetInt32(uint32_t value);
   void Set(Int *a);
-  void SetBase10(char *value);
   void SetBase16(char *value);
   void SetBaseN(int n,char *charset,char *value);
-  void SetByte(int n,unsigned char byte);
-  void SetDWord(int n, uint32_t b);
-  void SetQWord(int n,uint64_t b);
-  void Set32Bytes(unsigned char *bytes);
-  void MaskByte(int n);
 
   // Getter
-  uint32_t GetInt32();
-  int GetBit(uint32_t n);
   unsigned char GetByte(int n);
   void Get32Bytes(unsigned char *buff);
 
   // To String
-  std::string GetBase2();
-  std::string GetBase10();
   std::string GetBase16();
   std::string GetBaseN(int n,char *charset);
-  std::string GetBlockStr();
-  std::string GetC64Str(int nbDigit);
 
 
   union {
@@ -186,8 +138,6 @@ private:
   uint64_t AddC(Int* a);
   void AddAndShift(Int* a,Int* b,uint64_t cH);
   void ShiftL64BitAndSub(Int *a,int n);
-  uint64_t Mult(Int *a, uint32_t b);
-  int  GetLowestBit();
   void CLEAR();
   void CLEARFF();
   void DivStep62(Int* u,Int* v,int64_t* eta,int *pos,int64_t* uu,int64_t* uv,int64_t* vu,int64_t* vv);
@@ -223,13 +173,6 @@ static uint64_t inline _udiv128(uint64_t hi, uint64_t lo, uint64_t d,uint64_t *r
   return q;  
 }
 
-static uint64_t inline __rdtsc() {
-  uint32_t h;
-  uint32_t l;
-  __asm__( "rdtsc;" :"=d"(h),"=a"(l));
-  return (uint64_t)h << 32 | (uint64_t)l;
-}
-
 #define __shiftright128(a,b,n) ((a)>>(n))|((b)<<(64-(n)))
 #define __shiftleft128(a,b,n) ((b)<<(n))|((a)>>(64-(n)))
 
@@ -247,14 +190,6 @@ static uint64_t inline __rdtsc() {
 #define LZC(x) _lzcnt_u64(x)
 
 #endif
-
-
-#define LoadI64(i,i64)    \
-i.bits64[0] = i64;        \
-i.bits64[1] = i64 >> 63;  \
-i.bits64[2] = i.bits64[1];\
-i.bits64[3] = i.bits64[1];\
-i.bits64[4] = i.bits64[1];
 
 static void inline imm_mul(uint64_t *x, uint64_t y, uint64_t *dst,uint64_t *carryH) {
 

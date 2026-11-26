@@ -494,6 +494,13 @@ void OrionSearch::output(const string& addr, const string& pAddr, const string& 
 
 	if (needToClose)
 		fclose(f);
+
+	if (jsonMode) {
+		emitJson("{\"event\":\"found\",\"address\":" + jsonString(addr) +
+			",\"type\":" + jsonString(searchType == BECH32 ? "p2wpkh" : "p2pkh") +
+			",\"wif\":" + jsonString(pAddr) + ",\"hex\":" + jsonString(paddedHex) +
+			",\"pubkey\":" + jsonString(pubKey) + ",\"saved\":" + (needToClose ? "true" : "false") + "}");
+	}
 }
 
 bool OrionSearch::checkPrivKey(const string& addr, const Int& key) {
@@ -501,14 +508,14 @@ bool OrionSearch::checkPrivKey(const string& addr, const Int& key) {
 	Int k((Int*)&key);
 	Point p = secp->ComputePublicKey(&k);
 
-	string chkAddr = secp->GetAddress(searchType, true, p);
+	string chkAddr = secp->GetAddress(searchType, p);
 	if (chkAddr != addr) {
 		// Check the negated key as a fallback
 		Int negK(&k);
 		negK.Neg();
 		negK.Add(&secp->order);
 		Point negP = secp->ComputePublicKey(&negK);
-		string negChkAddr = secp->GetAddress(searchType, true, negP);
+		string negChkAddr = secp->GetAddress(searchType, negP);
 		if (negChkAddr != addr) {
 			fprintf(stdout, "\nWarning, wrong private key generated !\n");
 			fprintf(stdout, "  Addr :%s\n", addr.c_str());
@@ -521,7 +528,7 @@ bool OrionSearch::checkPrivKey(const string& addr, const Int& key) {
 		p = negP;
 	}
 
-	output(addr, secp->GetPrivAddress(true, k), k.GetBase16(), secp->GetPublicKeyHex(true, p));
+	output(addr, secp->GetPrivAddress(k), k.GetBase16(), secp->GetPublicKeyHex(p));
 	return true;
 }
 
@@ -538,7 +545,7 @@ void OrionSearch::checkAddr(int prefIdx, const uint8_t* hash160, const Int& key)
 				continue;
 
 			if (ripemd160_comp_hash(t.hash160, hash160)) {
-				if (checkPrivKey(secp->GetAddress(searchType, true, (unsigned char*)hash160), key)) {
+				if (checkPrivKey(secp->GetAddress(searchType, (unsigned char*)hash160), key)) {
 					if (!t.found) {
 						t.found = true;
 						nbUniqueFound++;
@@ -553,7 +560,7 @@ void OrionSearch::checkAddr(int prefIdx, const uint8_t* hash160, const Int& key)
 		}
 	}
 	else {
-		string addr = secp->GetAddress(searchType, true, (unsigned char*)hash160);
+		string addr = secp->GetAddress(searchType, (unsigned char*)hash160);
 
 		for (uint32_t idx : idxs) {
 			ADDRESS_TARGET& t = targets[idx];
@@ -577,19 +584,17 @@ void OrionSearch::checkAddr(int prefIdx, const uint8_t* hash160, const Int& key)
 	}
 }
 
-void OrionSearch::scanCPUWindow(const Int& firstKey, const Int& lastKey, const Int* skipKey) {
+void OrionSearch::scanCPUWindow(const Int& firstKey, const Int& lastKey) {
 
 	Int k((Int*)&firstKey);
 	Int endK((Int*)&lastKey);
 	uint8_t h160[20];
 
 	while (!endOfSearch && !k.IsGreater(&endK)) {
-		if (skipKey == NULL || !k.IsEqual((Int*)skipKey)) {
-			Point p = secp->ComputePublicKey(&k);
-			if (!p.isZero()) {
-				secp->GetHash160(searchType, true, p, h160);
-				checkAddr(readLE16(h160), h160, k);
-			}
+		Point p = secp->ComputePublicKey(&k);
+		if (!p.isZero()) {
+			secp->GetHash160(p, h160);
+			checkAddr(readLE16(h160), h160, k);
 		}
 		k.AddOne();
 	}
@@ -941,10 +946,13 @@ void OrionSearch::FindKeyGPU(int gpuId) {
 	}
 
 	// Handle edge keys where GPU batch-inversion affine addition would hit dx == 0:
-	//   1) ksStart == subGrp/2 (e.g. Puzzle #10: -start 200) -> thread 0 center P[0] = STEP_SIZE*G == finalJump
+	//   1) ksStart == subGrp/2 (e.g. Puzzle #10: -start 200) -> thread 0 center P[0] = subGrp*G == the
+	//      jump point. That launch would corrupt thread 0's point for every later launch, so the CPU
+	//      scans thread 0's first launch and the GPU runs thread 0 one launch ahead.
 	//   2) ksFinish within STEP_SIZE of curve order -> wraps past order into small multiples of G
 	Int cpuHandledFrom;
 	bool hasTailCpuWindow = false;
+	bool thread0Ahead = false;
 	if (!effectiveRandom && idxcount == 0) {
 		Int halfGrp((uint64_t)(subGrp / 2));
 		if (bc->ksStart.IsEqual(&halfGrp)) {
@@ -952,9 +960,8 @@ void OrionSearch::FindKeyGPU(int gpuId) {
 			winEnd.Add((uint64_t)(STEP_SIZE - 1));
 			if (winEnd.IsGreater(&bc->ksFinish))
 				winEnd.Set(&bc->ksFinish);
-			Int centerKey(&bc->ksStart);
-			centerKey.Add(&halfGrp); // GPU checks center BEFORE batch inversion
-			scanCPUWindow(bc->ksStart, winEnd, &centerKey);
+			scanCPUWindow(bc->ksStart, winEnd);
+			thread0Ahead = true;
 		}
 
 		Int tailThreshold(&secp->order);
@@ -962,7 +969,7 @@ void OrionSearch::FindKeyGPU(int gpuId) {
 		if (!endOfSearch && bc->ksFinish.IsGreaterOrEqual(&tailThreshold)) {
 			cpuHandledFrom.Set(bc->ksStart.IsGreater(&tailThreshold) ? &bc->ksStart : &tailThreshold);
 			hasTailCpuWindow = true;
-			scanCPUWindow(cpuHandledFrom, bc->ksFinish, NULL);
+			scanCPUWindow(cpuHandledFrom, bc->ksFinish);
 		}
 
 		if (endOfSearch) {
@@ -984,7 +991,7 @@ void OrionSearch::FindKeyGPU(int gpuId) {
 	// -random jumps: a 64-bit generator seeded with 256 bits, so that processes (one per GPU) and
 	// restarts never share a sequence
 	std::random_device rd;
-	std::seed_seq seed{ rd(), rd(), rd(), rd(), rd(), rd(), rd(), (unsigned)time(NULL) };
+	std::seed_seq seed{ rd(), rd(), rd(), rd(), rd(), rd(), rd(), rd(), (unsigned)time(NULL) };
 	std::mt19937_64 rng(seed);
 
 	Int maxOffset(&stepThread);
@@ -1016,6 +1023,11 @@ void OrionSearch::FindKeyGPU(int gpuId) {
 
 	if (ok) {
 		getGPUStartingKeys(bc->ksStart, stepThread, subGrp, numThreadsGPU, publicKeys, startProgress);
+		if (thread0Ahead) {
+			Int k0(&bc->ksStart);
+			k0.Add((uint64_t)(subGrp / 2 + STEP_SIZE));
+			publicKeys[0] = secp->ComputePublicKey(&k0);
+		}
 		ok = g.SetKeys(publicKeys);
 	}
 	delete[] publicKeys;
@@ -1024,7 +1036,8 @@ void OrionSearch::FindKeyGPU(int gpuId) {
 	fflush(stdout);
 
 	if (ok) {
-		printf("GPU Started ! \r");
+		// Without -json the progress line overwrites it
+		printf(jsonMode ? "GPU Started !\n" : "GPU Started ! \r");
 		fflush(stdout);
 	}
 
@@ -1036,6 +1049,18 @@ void OrionSearch::FindKeyGPU(int gpuId) {
 	double tprev = ttot;
 	double speedAvg = 0.0;
 	uint64_t launches = 0;
+
+	if (ok && jsonMode) {
+		char nums[512];
+		snprintf(nums, sizeof(nums),
+			",\"gpuId\":%d,\"threads\":%d,\"keysPerLaunch\":%.0f,\"range\":%.17g,\"random\":%s,"
+			"\"backups\":%s,\"targets\":%u,\"keysDone\":%.17g,\"elapsed\":%.3f}",
+			gpuId, numThreadsGPU, keysPerLaunch, taskSize.ToDouble(), effectiveRandom ? "true" : "false",
+			saveBackups ? "true" : "false", nbAddress, keysDone, ttot);
+		emitJson("{\"event\":\"start\",\"gpu\":" + jsonString(g.deviceName) +
+			",\"start\":" + jsonString(bc->ksStart.GetBase16()) +
+			",\"end\":" + jsonString(bc->ksFinish.GetBase16()) + nums);
+	}
 
 	Int part_key;
 	Int privkey;
@@ -1060,6 +1085,8 @@ void OrionSearch::FindKeyGPU(int gpuId) {
 			g.FreeGPUEngine();
 			printf("Paused (GPU released) - press p to resume, Ctrl+C to quit\n");
 			fflush(stdout);
+			if (jsonMode)
+				emitJson("{\"event\":\"state\",\"state\":\"paused\"}");
 			searchStatus = SEARCH_PAUSED;
 			break;
 		}
@@ -1093,6 +1120,8 @@ void OrionSearch::FindKeyGPU(int gpuId) {
 
 			ITEM it = found[i];
 			localOffset.Set(&keycount);
+			if (thread0Ahead && it.thId == 0)
+				localOffset.Add((uint64_t)STEP_SIZE);
 			if (it.incr >= 0)
 				localOffset.Add((uint64_t)it.incr);
 			else
@@ -1212,6 +1241,19 @@ void OrionSearch::PrintStats(double keysDone, double speed, double ttot, double 
 	double log_keys = (keysDone >= 1.0) ? log2(keysDone) : 0.0;
 	double bkeys = keysDone / 1000000000.0;
 
+	if (jsonMode) {
+		// Replaces the \r progress line, which would only clutter a front end's log
+		double eta = -1.0;
+		if (!isRandom && speed > 0.0)
+			eta = (taskSize > keysDone ? taskSize - keysDone : 0.0) / (speed * 1000000.0);
+		char ev[256];
+		snprintf(ev, sizeof(ev),
+			"{\"event\":\"status\",\"speed\":%.2f,\"keysDone\":%.17g,\"percent\":%.6f,\"elapsed\":%.3f,"
+			"\"eta\":%.17g,\"found\":%d}", speed, keysDone, perc, ttot, eta, nbFoundKey);
+		emitJson(ev);
+		return;
+	}
+
 	char run[64];
 	formatDuration(run, sizeof(run), ttot);
 
@@ -1232,6 +1274,35 @@ void OrionSearch::PrintStats(double keysDone, double speed, double ttot, double 
 	fflush(stdout);
 }
 
+
+// ----------------------------------------------------------------------------
+// -json events
+
+std::string jsonString(const std::string& s) {
+	std::string r = "\"";
+	for (unsigned char c : s) {
+		if (c == '"' || c == '\\') {
+			r += '\\';
+			r += (char)c;
+		}
+		else if (c < 0x20) {
+			char u[8];
+			snprintf(u, sizeof(u), "\\u%04x", c);
+			r += u;
+		}
+		else {
+			r += (char)c;
+		}
+	}
+	return r + "\"";
+}
+
+void emitJson(const std::string& obj) {
+	// One write per event, so it cannot interleave with another line
+	std::string line = "@" + obj + "\n";
+	fwrite(line.data(), 1, line.size(), stdout);
+	fflush(stdout);
+}
 
 // ----------------------------------------------------------------------------
 // Backup file
@@ -1258,28 +1329,6 @@ bool readBackup(const std::string& fileName, BACKUP_STATE* st) {
 	std::ifstream f(fileName, std::ios::binary);
 	if (!f)
 		return false;
-
-	f.seekg(0, std::ios::end);
-	std::streamoff size = f.tellg();
-	f.seekg(0, std::ios::beg);
-
-	st->legacy = false;
-	st->nbThread = 0;
-	st->stepSize = 0;
-	st->start.SetInt32(0);
-	st->finish.SetInt32(0);
-
-	if (size == (std::streamoff)(sizeof(int32_t) + sizeof(double))) {
-		// Legacy 12-byte backup format: int idxcount, double time
-		int32_t idx = 0;
-		f.read(reinterpret_cast<char*>(&idx), sizeof(idx));
-		f.read(reinterpret_cast<char*>(&st->elapsed), sizeof(st->elapsed));
-		if (!f || idx < 0)
-			return false;
-		st->idxcount = (uint64_t)idx;
-		st->legacy = true;
-		return true;
-	}
 
 	char magic[8];
 	f.read(magic, sizeof(magic));
@@ -1331,7 +1380,6 @@ void OrionSearch::saveBackup(int nbThread, int stepSize, double elapsed, int gpu
 	st.finish.Set(&bc->ksFinish);
 	st.nbThread = (uint32_t)nbThread;
 	st.stepSize = (uint32_t)stepSize;
-	st.legacy = false;
 
 	std::string filename = backupFileName(gpuid);
 	if (!writeBackup(filename, &st))

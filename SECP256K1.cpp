@@ -40,8 +40,6 @@ void Secp256K1::Init() {
   G.z.SetInt32(1);
   order.SetBase16("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
 
-  Int::InitK1(&order);
-
   // Compute Generator table
   Point N(G);
   for(int i = 0; i < 32; i++) {
@@ -51,7 +49,7 @@ void Secp256K1::Init() {
       GTable[i * 256 + j] = N;
       N = AddDirect(N, GTable[i * 256]);
     }
-    GTable[i * 256 + 255] = N; // Dummy point for check function
+    GTable[i * 256 + 255] = N; // Not used by ComputePublicKey (bytes 1..255 use entries 0..254)
   }
 
 }
@@ -90,138 +88,61 @@ Point Secp256K1::ComputePublicKey(Int *privKey) {
 
 }
 
-std::string Secp256K1::GetPublicKeyHex(bool compressed, Point &pubKey) {
+// Compressed public key (02/03 + x), the only form Orion searches
+std::string Secp256K1::GetPublicKeyHex(Point &pubKey) {
 
-  unsigned char publicKeyBytes[128];
+  unsigned char publicKeyBytes[33];
   char tmp[3];
   std::string ret;
 
-  if (!compressed) {
+  publicKeyBytes[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
+  pubKey.x.Get32Bytes(publicKeyBytes + 1);
 
-    // Full public key
-    publicKeyBytes[0] = 0x4;
-    pubKey.x.Get32Bytes(publicKeyBytes + 1);
-    pubKey.y.Get32Bytes(publicKeyBytes + 33);
-
-    for (int i = 0; i < 65; i++) {
-      sprintf(tmp, "%02X", (int)publicKeyBytes[i]);
-      ret.append(tmp);
-    }
-
-  } else {
-
-    // Compressed public key
-    publicKeyBytes[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
-    pubKey.x.Get32Bytes(publicKeyBytes + 1);
-
-    for (int i = 0; i < 33; i++) {
-      sprintf(tmp, "%02X", (int)publicKeyBytes[i]);
-      ret.append(tmp);
-    }
-
+  for (int i = 0; i < 33; i++) {
+    sprintf(tmp, "%02X", (int)publicKeyBytes[i]);
+    ret.append(tmp);
   }
 
   return ret;
 
 }
 
-void Secp256K1::GetHash160(int type, bool compressed, Point &pubKey, unsigned char *hash) {
+// hash160 of the compressed public key: the same for P2PKH and P2WPKH
+void Secp256K1::GetHash160(Point &pubKey, unsigned char *hash) {
 
   unsigned char shapk[64];
+  unsigned char publicKeyBytes[64];   // sha256_33 pads the message in place
 
-  switch (type) {
-
-  case P2PKH:
-  case BECH32:
-  {
-    unsigned char publicKeyBytes[128];
-
-    if (!compressed) {
-
-      // Full public key
-      publicKeyBytes[0] = 0x4;
-      pubKey.x.Get32Bytes(publicKeyBytes + 1);
-      pubKey.y.Get32Bytes(publicKeyBytes + 33);
-      sha256_65(publicKeyBytes, shapk);
-
-    } else {
-
-      // Compressed public key
-      publicKeyBytes[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
-      pubKey.x.Get32Bytes(publicKeyBytes + 1);
-      sha256_33(publicKeyBytes, shapk);
-
-    }
-
-    ripemd160_32(shapk, hash);
-  }
-  break;
-
-  case P2SH:
-  {
-
-    // Redeem Script (1 to 1 P2SH)
-    unsigned char script[64];
-
-    script[0] = 0x00;  // OP_0
-    script[1] = 0x14;  // PUSH 20 bytes
-    GetHash160(P2PKH, compressed, pubKey, script + 2);
-
-    sha256(script, 22, shapk);
-    ripemd160_32(shapk, hash);
-
-  }
-  break;
-
-  }
+  publicKeyBytes[0] = pubKey.y.IsEven() ? 0x2 : 0x3;
+  pubKey.x.Get32Bytes(publicKeyBytes + 1);
+  sha256_33(publicKeyBytes, shapk);
+  ripemd160_32(shapk, hash);
 
 }
 
-std::string Secp256K1::GetPrivAddress(bool compressed,Int &privKey) {
+// WIF of a private key with the compressed-key suffix
+std::string Secp256K1::GetPrivAddress(Int &privKey) {
 
   unsigned char address[38];
 
   address[0] = 0x80; // Mainnet
   privKey.Get32Bytes(address + 1);
-
-  if( compressed ) {
-
-    // compressed suffix
-    address[33] = 1;
-    sha256_checksum(address, 34, address + 34);
-    return EncodeBase58(address,address + 38);
-
-  } else {
-
-    // Compute checksum
-    sha256_checksum(address, 33, address + 33);
-    return EncodeBase58(address,address + 37);
-
-  }
+  address[33] = 1;
+  sha256_checksum(address, 34, address + 34);
+  return EncodeBase58(address,address + 38);
 
 }
 
-std::string Secp256K1::GetAddress(int type, bool compressed, unsigned char *hash160) {
+std::string Secp256K1::GetAddress(int type, unsigned char *hash160) {
+
+  if (type == BECH32) {
+    char output[128];
+    segwit_addr_encode(output, "bc", 0, hash160, 20);
+    return std::string(output);
+  }
 
   unsigned char address[25];
-  switch(type) {
-
-    case P2PKH:
-      address[0] = 0x00;
-      break;
-
-    case P2SH:
-      address[0] = 0x05;
-      break;
-
-    case BECH32:
-    {
-      char output[128];
-      segwit_addr_encode(output, "bc", 0, hash160, 20);
-      return std::string(output);
-    }
-    break;
-  }
+  address[0] = 0x00;
   memcpy(address + 1, hash160,20);
   sha256_checksum(address,21,address+21);
 
@@ -230,42 +151,11 @@ std::string Secp256K1::GetAddress(int type, bool compressed, unsigned char *hash
 
 }
 
-std::string Secp256K1::GetAddress(int type, bool compressed, Point &pubKey) {
+std::string Secp256K1::GetAddress(int type, Point &pubKey) {
 
-  unsigned char address[25];
-
-  switch (type) {
-
-  case P2PKH:
-    address[0] = 0x00;
-    break;
-
-  case BECH32:
-  {
-    if (!compressed) {
-      return " BECH32: Only compressed key ";
-    }
-    char output[128];
-    uint8_t h160[20];
-    GetHash160(type, compressed, pubKey, h160);
-    segwit_addr_encode(output,"bc",0,h160,20);
-    return std::string(output);
-  }
-  break;
-
-  case P2SH:
-    if (!compressed) {
-      return " P2SH: Only compressed key ";
-    }
-    address[0] = 0x05;
-    break;
-  }
-
-  GetHash160(type,compressed,pubKey, address + 1);
-  sha256_checksum(address, 21, address + 21);
-
-  // Base58
-  return EncodeBase58(address, address + 25);
+  unsigned char h160[20];
+  GetHash160(pubKey, h160);
+  return GetAddress(type, h160);
 
 }
 
@@ -340,75 +230,6 @@ Point Secp256K1::Add2(Point &p1, Point &p2) {
 
 }
 
-Point Secp256K1::Add(Point &p1,Point &p2) {
-
-  Int u;
-  Int v;
-  Int u1;
-  Int u2;
-  Int v1;
-  Int v2;
-  Int vs2;
-  Int vs3;
-  Int us2;
-  Int w;
-  Int a;
-  Int us2w;
-  Int vs2v2;
-  Int vs3u2;
-  Int _2vs2v2;
-  Int x3;
-  Int vs3y1;
-  Point r;
-
-  /*
-  U1 = Y2 * Z1
-  U2 = Y1 * Z2
-  V1 = X2 * Z1
-  V2 = X1 * Z2
-  if (V1 == V2)
-    if (U1 != U2)
-      return POINT_AT_INFINITY
-    else
-      return POINT_DOUBLE(X1, Y1, Z1)
-  U = U1 - U2
-  V = V1 - V2
-  W = Z1 * Z2
-  A = U ^ 2 * W - V ^ 3 - 2 * V ^ 2 * V2
-  X3 = V * A
-  Y3 = U * (V ^ 2 * V2 - A) - V ^ 3 * U2
-  Z3 = V ^ 3 * W
-  return (X3, Y3, Z3)
-  */
-
-  u1.ModMulK1(&p2.y,&p1.z);
-  u2.ModMulK1(&p1.y,&p2.z);
-  v1.ModMulK1(&p2.x,&p1.z);
-  v2.ModMulK1(&p1.x,&p2.z);
-  u.ModSub(&u1,&u2);
-  v.ModSub(&v1,&v2);
-  w.ModMulK1(&p1.z,&p2.z);
-  us2.ModSquareK1(&u);
-  vs2.ModSquareK1(&v);
-  vs3.ModMulK1(&vs2,&v);
-  us2w.ModMulK1(&us2,&w);
-  vs2v2.ModMulK1(&vs2,&v2);
-  _2vs2v2.ModAdd(&vs2v2,&vs2v2);
-  a.ModSub(&us2w,&vs3);
-  a.ModSub(&_2vs2v2);
-
-  r.x.ModMulK1(&v,&a);
-
-  vs3u2.ModMulK1(&vs3,&u2);
-  r.y.ModSub(&vs2v2,&a);
-  r.y.ModMulK1(&r.y,&u);
-  r.y.ModSub(&vs3u2);
-
-  r.z.ModMulK1(&vs3,&w);
-
-  return r;
-}
-
 Point Secp256K1::DoubleDirect(Point &p) {
 
   Int _s;
@@ -437,108 +258,4 @@ Point Secp256K1::DoubleDirect(Point &p) {
   r.y.ModNeg();           // ry = neg(p.y + s*(ret.x+neg(p.x)));
 
   return r;
-}
-
-Point Secp256K1::Double(Point &p) {
-
-
-  /*
-  if (Y == 0)
-    return POINT_AT_INFINITY
-    W = a * Z ^ 2 + 3 * X ^ 2
-    S = Y * Z
-    B = X * Y*S
-    H = W ^ 2 - 8 * B
-    X' = 2*H*S
-    Y' = W*(4*B - H) - 8*Y^2*S^2
-    Z' = 8*S^3
-    return (X', Y', Z')
-  */
-
-  Int z2;
-  Int x2;
-  Int _3x2;
-  Int w;
-  Int s;
-  Int s2;
-  Int b;
-  Int _8b;
-  Int _8y2s2;
-  Int y2;
-  Int h;
-  Point r;
-
-  z2.ModSquareK1(&p.z);
-  z2.SetInt32(0); // a=0
-  x2.ModSquareK1(&p.x);
-  _3x2.ModAdd(&x2,&x2);
-  _3x2.ModAdd(&x2);
-  w.ModAdd(&z2,&_3x2);
-  s.ModMulK1(&p.y,&p.z);
-  b.ModMulK1(&p.y,&s);
-  b.ModMulK1(&p.x);
-  h.ModSquareK1(&w);
-  _8b.ModAdd(&b,&b);
-  _8b.ModDouble();
-  _8b.ModDouble();
-  h.ModSub(&_8b);
-
-  r.x.ModMulK1(&h,&s);
-  r.x.ModAdd(&r.x);
-
-  s2.ModSquareK1(&s);
-  y2.ModSquareK1(&p.y);
-  _8y2s2.ModMulK1(&y2,&s2);
-  _8y2s2.ModDouble();
-  _8y2s2.ModDouble();
-  _8y2s2.ModDouble();
-
-  r.y.ModAdd(&b,&b);
-  r.y.ModAdd(&r.y,&r.y);
-  r.y.ModSub(&h);
-  r.y.ModMulK1(&w);
-  r.y.ModSub(&_8y2s2);
-
-  r.z.ModMulK1(&s2,&s);
-  r.z.ModDouble();
-  r.z.ModDouble();
-  r.z.ModDouble();
-
-  return r;
-}
-
-Int Secp256K1::GetY(Int x,bool isEven) {
-
-  Int _s;
-  Int _p;
-
-  _s.ModSquareK1(&x);
-  _p.ModMulK1(&_s,&x);
-  _p.ModAdd(7);
-  _p.ModSqrt();
-
-  if(!_p.IsEven() && isEven) {
-    _p.ModNeg();
-  }
-  else if(_p.IsEven() && !isEven) {
-    _p.ModNeg();
-  }
-
-  return _p;
-
-}
-
-bool Secp256K1::EC(Point &p) {
-
-  Int _s;
-  Int _p;
-
-  _s.ModSquareK1(&p.x);
-  _p.ModMulK1(&_s,&p.x);
-  _p.ModAdd(7);
-  _s.ModMulK1(&p.y,&p.y);
-  _s.ModSub(&_p);
-
-  return _s.IsZero(); // ( ((pow2(y) - (pow3(x) + 7)) % P) == 0 );
-
 }

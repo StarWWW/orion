@@ -18,10 +18,6 @@
 #include "Int.h"
 #include <string.h>
 #include <math.h>
-#include <emmintrin.h>
-
-#define MAX(x,y) (((x)>(y))?(x):(y))
-#define MIN(x,y) (((x)<(y))?(x):(y))
 
 Int _ONE((uint64_t)1);
 
@@ -261,99 +257,6 @@ void Int::MatrixVecMul(Int* u,Int* v,int64_t _11,int64_t _12,int64_t _21,int64_t
 
 }
 
-/*
-void Int::MatrixVecMul(Int* u,Int* v,int64_t _11,int64_t _12,int64_t _21,int64_t _22,int len,bool *negu,bool *negv) {
-
-  Int t1,t2,t3,t4;
-  Int* du1;
-  Int* du2;
-  Int* dv1;
-  Int* dv2;
-  Int nu;
-  Int nv;
-  unsigned char c1;
-  unsigned char c2;
-  unsigned char c3;
-  unsigned char c4;
-  uint64_t h1,carry1;
-  uint64_t h2,carry2;
-  uint64_t h3,carry3;
-  uint64_t h4,carry4;
-
-  // Compute -u,-v
-  c1 = _subborrow_u64(0,0,u->bits64[0],nu.bits64 + 0);
-  c2 = _subborrow_u64(0,0,v->bits64[0],nv.bits64 + 0);
-  for(int i = 1; i <= len; i++) {
-    c1 = _subborrow_u64(c1,0,u->bits64[i],nu.bits64 + i);
-    c2 = _subborrow_u64(c2,0,v->bits64[i],nv.bits64 + i);
-  }
-
-  // Make _XY positive
-  if(_11 < 0) {
-    du1 = &nu;
-    _11 = -_11;
-  } else {
-    du1 = u;
-  }
-  if(_12 < 0) {
-    dv1 = &nv;
-    _12 = -_12;
-  } else {
-    dv1 = v;
-  }
-  if(_21 < 0) {
-    du2 = &nu;
-    _21 = -_21;
-  } else {
-    du2 = u;
-  }
-  if(_22 < 0) {
-    dv2 = &nv;
-    _22 = -_22;
-  } else {
-    dv2 = v;
-  }
-
-  // Compute product
-  t1.bits64[0] = _umul128(du1->bits64[0],_11,&h1); carry1 = h1;
-  t2.bits64[0] = _umul128(dv1->bits64[0],_12,&h2); carry2 = h2;
-  t3.bits64[0] = _umul128(du2->bits64[0],_21,&h3); carry3 = h3;
-  t4.bits64[0] = _umul128(dv2->bits64[0],_22,&h4); carry4 = h4;
-  c1 = 0; c2 = 0; c3 = 0; c4 = 0;
-
-  for(int i = 1; i <= len; i++) {
-    c1 = _addcarry_u64(c1,_umul128(du1->bits64[i],_11,&h1),carry1,t1.bits64 + i); carry1 = h1;
-    c2 = _addcarry_u64(c2,_umul128(dv1->bits64[i],_12,&h2),carry2,t2.bits64 + i); carry2 = h2;
-    c3 = _addcarry_u64(c3,_umul128(du2->bits64[i],_21,&h3),carry3,t3.bits64 + i); carry3 = h3;
-    c4 = _addcarry_u64(c4,_umul128(dv2->bits64[i],_22,&h4),carry4,t4.bits64 + i); carry4 = h4;
-  }
-
-  // Add
-  c1 = 0; c2 = 0;
-  for(int i = 0; i <= len; i++) {
-    c1 = _addcarry_u64(c1,t1.bits64[i],t2.bits64[i],u->bits64 + i);
-    c2 = _addcarry_u64(c2,t3.bits64[i],t4.bits64[i],v->bits64 + i);
-  }
-
-  *negu = (int64_t)u->bits64[len] < 0;
-  *negv = (int64_t)v->bits64[len] < 0;
-
-  if( *negu ) {
-    c1 = 0;
-    for(int i = 0; i <= len; i++)
-      c1 = _subborrow_u64(c1,0,u->bits64[i],u->bits64 + i);
-  }
-
-  if( *negv ) {
-    c1 = 0;
-    for(int i = 0; i <= len; i++)
-      c1 = _subborrow_u64(c1,0,v->bits64[i],v->bits64 + i);
-  }
-
-
-}
-*/
-
 // ------------------------------------------------
 
 bool Int::IsGreater(Int *a) {
@@ -406,24 +309,6 @@ bool Int::IsGreaterOrEqual(Int *a) {
 
 // ------------------------------------------------
 
-bool Int::IsLowerOrEqual(Int *a) {
-
-  int i = NB64BLOCK - 1;
-
-  while (i >= 0) {
-    if (a->bits64[i] != bits64[i])
-      break;
-    i--;
-}
-
-  if (i >= 0) {
-    return bits64[i]<a->bits64[i];
-  } else {
-    return true;
-  }
-
-}
-
 bool Int::IsEqual(Int *a) {
 
 return
@@ -468,27 +353,10 @@ void Int::SetInt32(uint32_t value) {
 
 // ------------------------------------------------
 
-uint32_t Int::GetInt32() {
-  return bits[0];
-}
-
-// ------------------------------------------------
-
 unsigned char Int::GetByte(int n) {
   
   unsigned char *bbPtr = (unsigned char *)bits;
   return bbPtr[n];
-
-}
-
-void Int::Set32Bytes(unsigned char *bytes) {
-
-  CLEAR();
-  uint64_t *ptr = (uint64_t *)bytes;
-  bits64[3] = _byteswap_uint64(ptr[0]);
-  bits64[2] = _byteswap_uint64(ptr[1]);
-  bits64[1] = _byteswap_uint64(ptr[2]);
-  bits64[0] = _byteswap_uint64(ptr[3]);
 
 }
 
@@ -500,27 +368,6 @@ void Int::Get32Bytes(unsigned char *buff) {
   ptr[1] = _byteswap_uint64(bits64[2]);
   ptr[0] = _byteswap_uint64(bits64[3]);
 
-}
-
-// ------------------------------------------------
-
-void Int::SetByte(int n,unsigned char byte) {
-
-	unsigned char *bbPtr = (unsigned char *)bits;
-	bbPtr[n] = byte;
-
-}
-
-// ------------------------------------------------
-
-void Int::SetDWord(int n,uint32_t b) {
-  bits[n] = b;
-}
-
-// ------------------------------------------------
-
-void Int::SetQWord(int n, uint64_t b) {
-	bits64[n] = b;
 }
 
 // ------------------------------------------------
@@ -609,23 +456,8 @@ bool Int::IsNegative() {
 
 // ------------------------------------------------
 
-bool Int::IsStrictPositive() {
-  if( IsPositive() )
-	  return !IsZero();
-  else
-	  return false;
-}
-
-// ------------------------------------------------
-
 bool Int::IsEven() {
   return (bits[0] & 0x1) == 0;
-}
-
-// ------------------------------------------------
-
-bool Int::IsOdd() {
-  return (bits[0] & 0x1) == 1;
 }
 
 // ------------------------------------------------
@@ -644,17 +476,6 @@ void Int::Neg() {
 	c = _subborrow_u64(c, 0, bits64[7], bits64 + 7);
 	c = _subborrow_u64(c, 0, bits64[8], bits64 + 8);
 #endif
-
-}
-
-// ------------------------------------------------
-
-void Int::ShiftL32Bit() {
-
-  for(int i=NB32BLOCK-1;i>0;i--) {
-    bits[i]=bits[i-1];
-  }
-  bits[0]=0;
 
 }
 
@@ -706,20 +527,6 @@ void Int::ShiftL(uint32_t n) {
 
 // ------------------------------------------------
 
-void Int::ShiftR32Bit() {
-
-  for(int i=0;i<NB32BLOCK-1;i++) {
-    bits[i]=bits[i+1];
-  }
-  if(((int32_t)bits[NB32BLOCK-2])<0)
-    bits[NB32BLOCK-1] = 0xFFFFFFFF;
-  else
-    bits[NB32BLOCK-1]=0;
-
-}
-
-// ------------------------------------------------
-
 void Int::ShiftR64Bit() {
 
 	for (int i = 0; i<NB64BLOCK - 1; i++) {
@@ -752,42 +559,10 @@ void Int::ShiftR(uint32_t n) {
 
 // ------------------------------------------------
 
-void Int::SwapBit(int bitNumber) {
-
-  uint32_t nb64 = bitNumber / 64;
-  uint32_t nb = bitNumber % 64;
-  uint64_t mask = 1ULL << nb;
-  if(bits64[nb64] & mask ) {
-    bits64[nb64] &= ~mask;
-  } else {
-    bits64[nb64] |= mask;
-  }
-
-}
-
-// ------------------------------------------------
-
 void Int::Mult(Int *a) {
 
   Int b(this);
   Mult(a,&b);
-
-}
-
-// ------------------------------------------------
-
-uint64_t Int::IMult(int64_t a) {
-
-  uint64_t carry;
-
-	// Make a positive
-	if (a < 0LL) {
-		a = -a;
-		Neg();
-	}
-
-	imm_imul(bits64, a, bits64, &carry);
-  return carry;
 
 }
 
@@ -874,14 +649,6 @@ void Int::Mult(Int *a,Int *b) {
 
 // ------------------------------------------------
 
-uint64_t Int::Mult(Int *a,uint32_t b) {
-  uint64_t carry;
-  imm_mul(a->bits64, (uint64_t)b, bits64, &carry);
-  return carry;
-}
-
-// ------------------------------------------------
-
 double Int::ToDouble() {
 
   double base = 1.0;
@@ -893,21 +660,6 @@ double Int::ToDouble() {
   }
 
   return sum;
-
-}
-
-// ------------------------------------------------
-
-int Int::GetBitLength() {
-
-  Int t(this);
-  if(IsNegative())
-	  t.Neg();
-
-  int i=NB64BLOCK-1;
-  while(i>=0 && t.bits64[i]==0) i--;
-  if(i<0) return 0;
-  return (int)((64-LZC(t.bits64[i])) + i*64);
 
 }
 
@@ -933,51 +685,11 @@ int Int::GetSize64() {
 
 // ------------------------------------------------
 
-void Int::MultModN(Int *a,Int *b,Int *n) {
-
-  Int r;
-  Mult(a,b);
-  Div(n,&r);
-  Set(&r);
-
-}
-
-// ------------------------------------------------
-
 void Int::Mod(Int *n) {
 
   Int r;
   Div(n,&r);
   Set(&r);
-
-}
-
-// ------------------------------------------------
-
-int Int::GetLowestBit() {
-
-  // Assume this!=0
-  int b=0;
-  while(GetBit(b)==0) b++;
-  return b;
-
-}
-
-// ------------------------------------------------
-
-void Int::MaskByte(int n) {
-
-  for (int i = n; i < NB32BLOCK; i++)
-	  bits[i] = 0;
-
-}
-
-// ------------------------------------------------
-
-void Int::Abs() {
-
-  if (IsNegative())
-    Neg();
 
 }
 
@@ -1086,138 +798,14 @@ void Int::Div(Int *a,Int *mod) {
 
 // ------------------------------------------------
 
-void Int::GCD(Int *a) {
-
-    uint32_t k;
-    uint32_t b;
-
-    Int U(this);
-    Int V(a);
-    Int T;
-
-    if(U.IsZero()) {
-      Set(&V);
-      return;
-    }
-
-    if(V.IsZero()) {
-      Set(&U);
-      return;
-    }
-
-    if(U.IsNegative()) U.Neg();
-    if(V.IsNegative()) V.Neg();
-
-    k = 0;
-    while (U.GetBit(k)==0 && V.GetBit(k)==0)
-      k++;
-    U.ShiftR(k);
-    V.ShiftR(k);
-    if (U.GetBit(0)==1) { 
-      T.Set(&V);
-      T.Neg();
-    } else {
-      T.Set(&U);
-    }
-
-    do {
-
-      if( T.IsNegative() ) {
-        T.Neg();
-        b=0;while(T.GetBit(b)==0) b++;
-        T.ShiftR(b);
-        V.Set(&T);
-        T.Set(&U);
-      } else {
-        b=0;while(T.GetBit(b)==0) b++;
-        T.ShiftR(b);
-        U.Set(&T);
-      }
-
-      T.Sub(&V);
-
-    } while (!T.IsZero());
-
-    // Store gcd
-    Set(&U);
-    ShiftL(k); 
-
-}
-
-// ------------------------------------------------
-
-void Int::SetBase10(char *value) {  
-
-  CLEAR();
-  Int pw((uint64_t)1);
-  Int c;
-  int lgth = (int)strlen(value);
-  for(int i=lgth-1;i>=0;i--) {
-    uint32_t id = (uint32_t)(value[i]-'0');
-    c.Set(&pw);
-    c.Mult(id);
-    Add(&c);
-    pw.Mult(10);
-  }
-
-}
-
-// ------------------------------------------------
-
 void  Int::SetBase16(char *value) {  
   SetBaseN(16,"0123456789ABCDEF",value);
 }
 
 // ------------------------------------------------
 
-std::string Int::GetBase10() {
-  return GetBaseN(10,"0123456789");
-}
-
-// ------------------------------------------------
-
 std::string Int::GetBase16() {
   return GetBaseN(16,"0123456789ABCDEF");
-}
-
-// ------------------------------------------------
-
-std::string Int::GetBlockStr() {
-	
-	char tmp[256];
-	char bStr[256];
-	tmp[0] = 0;
-	for (int i = NB32BLOCK-3; i>=0 ; i--) {
-	  sprintf(bStr, "%08X", bits[i]);
-	  strcat(tmp, bStr);
-	  if(i!=0) strcat(tmp, " ");
-	}
-	return std::string(tmp);
-}
-
-// ------------------------------------------------
-
-std::string Int::GetC64Str(int nbDigit) {
-
-  char tmp[256];
-  char bStr[256];
-  tmp[0] = '{';
-  tmp[1] = 0;
-  for (int i = 0; i< nbDigit; i++) {
-    if (bits64[i] != 0) {
-#ifdef WIN64
-      sprintf(bStr, "0x%016I64XULL", bits64[i]);
-#else
-      sprintf(bStr, "0x%" PRIx64  "ULL", bits64[i]);
-#endif
-    } else {
-      sprintf(bStr, "0ULL");
-    }
-    strcat(tmp, bStr);
-    if (i != nbDigit -1) strcat(tmp, ",");
-  }
-  strcat(tmp,"}");
-  return std::string(tmp);
 }
 
 // ------------------------------------------------
@@ -1290,35 +878,3 @@ std::string Int::GetBaseN(int n,char *charset) {
 }
 
 // ------------------------------------------------
-
-
-int Int::GetBit(uint32_t n) {
-
-  uint32_t byte = n>>5;
-  uint32_t bit  = n&31;
-  uint32_t mask = 1 << bit;
-  return (bits[byte] & mask)!=0;
-
-}
-
-// ------------------------------------------------
-
-std::string Int::GetBase2() {
-
-  char ret[1024];
-  int k=0;
-
-  for(int i=0;i<NB32BLOCK-1;i++) {
-    unsigned int mask=0x80000000;
-    for(int j=0;j<32;j++) {
-      if(bits[i]&mask) ret[k]='1';
-      else             ret[k]='0';
-      k++;
-      mask=mask>>1;
-    }
-  }
-  ret[k]=0;
-
-  return std::string(ret);
-
-}

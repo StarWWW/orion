@@ -1,4 +1,4 @@
-﻿/*
+/*
  * This file is part of Orion (derived from VanitySearch, https://github.com/JeanLucPons/VanitySearch).
  * Copyright (c) 2019 Jean Luc PONS.
  * Modified in 2026 for NVIDIA Blackwell (sm_120) throughput, see OPTIMIZATION.md and the git history.
@@ -11,11 +11,8 @@
 // 256(+64) bits integer CUDA libray for SECPK1
 // ---------------------------------------------------------------------------------
 
-
-
 // We need 1 extra block for ModInv
 #define NBBLOCK 5
-#define BIFULLSIZE 40
 
 // Assembly directives
 #define UADDO(c, a, b) asm volatile ("add.cc.u64 %0, %1, %2;" : "=l"(c) : "l"(a), "l"(b));
@@ -40,25 +37,16 @@
 #define MADDC(r,a,b,c) asm volatile ("madc.hi.cc.u64 %0, %1, %2, %3;" : "=l"(r) : "l"(a), "l"(b), "l"(c));
 #define MADD(r,a,b,c) asm volatile ("madc.hi.u64 %0, %1, %2, %3;" : "=l"(r) : "l"(a), "l"(b), "l"(c));
 
-
-
-//#define MM64 0xD838091DD2253531ULL
-//#define MSK62 0x3FFFFFFFFFFFFFFF
-
-
 __device__ __constant__ uint64_t MM64 = 0xD838091DD2253531ULL;
 __device__ __constant__ uint64_t MSK62 = 0x3FFFFFFFFFFFFFFFULL;
 
 // ---------------------------------------------------------------------------------------
 
-#define _IsPositive(x) (((int64_t)(x[4]))>=0LL)
 #define _IsNegative(x) (((int64_t)(x[4]))<0LL)
-#define _IsEqual(a,b)  ((a[4] == b[4]) && (a[3] == b[3]) && (a[2] == b[2]) && (a[1] == b[1]) && (a[0] == b[0]))
 #define _IsZero(a)     ((a[4] | a[3] | a[2] | a[1] | a[0]) == 0ULL)
 #define _IsOne(a)      ((a[4] == 0ULL) && (a[3] == 0ULL) && (a[2] == 0ULL) && (a[1] == 0ULL) && (a[0] == 1ULL))
 
 #define IDX threadIdx.x
-
 
 // ---------------------------------------------------------------------------------------
 
@@ -363,7 +351,6 @@ __device__ void _ModSqr(uint64_t *rp, const uint64_t *up) {
 
 #define MADDS(r,a,b,c) asm volatile ("madc.hi.s64 %0, %1, %2, %3;" : "=l"(r) : "l"(a), "l"(b), "l"(c));
 
-#define __sright128(a,b,n) ((a)>>(n))|((b)<<(64-(n)))
 #define __sleft128(a,b,n) ((b)<<(n))|((a)>>(64-(n)))
 
 __device__ void ShiftR62(uint64_t dest[5], uint64_t r[5], uint64_t carry) {
@@ -1103,15 +1090,3 @@ __device__ __forceinline__ void WarpModInv32(uint32_t val[8], uint32_t s_tree[8]
         ModMult_Wide32(val, a, b);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-

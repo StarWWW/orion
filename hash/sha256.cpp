@@ -439,9 +439,7 @@ void sha256(unsigned char *input, int length, unsigned char *digest) {
 
 }
 
-const uint8_t sizedesc_32[8] = { 0,0,0,0,0,0,1,0 };
 const uint8_t sizedesc_33[8] = { 0,0,0,0,0,0,1,8 };
-const uint8_t sizedesc_65[8] = { 0,0,0,0,0,0,2,8 };
 
 void sha256_33(unsigned char *input, unsigned char *digest) {
 
@@ -464,28 +462,6 @@ void sha256_33(unsigned char *input, unsigned char *digest) {
 
 }
 
-void sha256_65(unsigned char *input, unsigned char *digest) {
-
-  uint32_t s[8];
-
-  memcpy(input + 65, _sha256::pad, 55);
-  memcpy(input + 120, sizedesc_65, 8);
-
-  _sha256::Initialize(s);
-  _sha256::Transform(s, input);
-  _sha256::Transform(s, input+64);
-
-  WRITEBE32(digest, s[0]);
-  WRITEBE32(digest + 4, s[1]);
-  WRITEBE32(digest + 8, s[2]);
-  WRITEBE32(digest + 12, s[3]);
-  WRITEBE32(digest + 16, s[4]);
-  WRITEBE32(digest + 20, s[5]);
-  WRITEBE32(digest + 24, s[6]);
-  WRITEBE32(digest + 28, s[7]);
-
-}
-
 void sha256_checksum(uint8_t *input, int length, uint8_t *checksum) {
 
   if (length < 0 || length > 55) {
@@ -505,14 +481,3 @@ void sha256_checksum(uint8_t *input, int length, uint8_t *checksum) {
   _sha256::writeBE32(checksum, s[0]);
 
 }
-
-std::string sha256_hex(unsigned char *digest) {
-
-    char buf[2*32+1];
-    buf[2*32] = 0;
-    for (int i = 0; i < 32; i++)
-        sprintf(buf+i*2,"%02hhX",digest[i]);
-    return std::string(buf);
-
-}
-

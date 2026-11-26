@@ -8,7 +8,7 @@ plus the compile time.
 * An NVIDIA GPU and its driver (`nvidia-smi` must work). The kernel is tuned for Blackwell (sm_120),
   but it builds and runs on older GPUs too (`--arch` / `CCAP`, see below).
 * The CUDA Toolkit. Blackwell needs **CUDA 12.8 or newer**.
-* An x86-64 CPU. The CPU side uses SSE code, so ARM machines are not supported.
+* An x86-64 CPU. The CPU side uses x86-64 assembly and intrinsics, so ARM machines are not supported.
 * Linux: `make` and `g++`.
 * Windows: **Visual Studio 2022** (any edition, with the "Desktop development with C++" workload)
   and **Python 3**.
